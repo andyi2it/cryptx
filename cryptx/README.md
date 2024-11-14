@@ -14,3 +14,18 @@ Since TypeScript cannot handle type information for `.vue` imports, they are shi
 2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
 
 You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+
+
+## Pre-requisites
+
+1. Install rust
+
+2. Install node
+
+3. Install
+
+```shell
+sudo apt-get install libsoup-3.0-0
+sudo add-apt-repository https://launchpad.net/ubuntu/jammy/+source/libsoup3
+sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 -y
+```
