@@ -9,4 +9,5 @@ export default createVuetify({
       mdi,
     },
   },
+  // Initialize the router
 })

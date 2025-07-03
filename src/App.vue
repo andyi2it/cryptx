@@ -1,46 +1,66 @@
-<script setup lang="ts">
-import { ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-
-const firstName = ref("");
-const lastName = ref("");
-const email = ref("");
-const password = ref("");
-
-async function joinNow() {
-  // Implement the join now functionality
-  console.log("Join now clicked");
-}
-
-async function continueWithFacebook() {
-  // Implement the continue with Facebook functionality
-  console.log("Continue with Facebook clicked");
-}
-</script>
-
 <template>
-  <main class="container">
-    <h1>Make the most of your professional life</h1>
+  <v-app :vuetify="vuetify">
+    <v-navigation-drawer v-model="drawer" app>
+      <v-list>
+        <v-list-item
+          v-for="item in items"
+          :key="item.title"
+          @click="navigateTo(item.route)"
+          :active="route.path === item.route"
+        >
+          <v-list-item-title>{{ item.title }}</v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </v-navigation-drawer>
 
-    <form class="form" @submit.prevent="joinNow">
-      <input id="first-name" v-model="firstName" placeholder="First name" />
-      <input id="last-name" v-model="lastName" placeholder="Last name" />
-      <input id="email" v-model="email" placeholder="Email" />
-      <input id="password" v-model="password" type="password" placeholder="Password (6 or more characters)" />
-      <p>By clicking Join now, you agree to LinkedIn's <a href="#">User Agreement</a>, <a href="#">Privacy Policy</a>, and <a href="#">Cookie Policy</a>.</p>
-      <button type="submit">Join now</button>
-    </form>
+    <v-app-bar app>
+      <v-toolbar-title>CryptX</v-toolbar-title>
+    </v-app-bar>
 
-    <div class="divider">or</div>
-
-    <button class="facebook-button" @click="continueWithFacebook">
-      <img src="./assets/facebook.svg" alt="Facebook logo" />
-      Continue with Facebook
-    </button>
-
-    <p>Already on LinkedIn? <a href="#">Sign in</a></p>
-  </main>
+    <v-main>
+      <v-container>
+        <router-view></router-view>
+      </v-container>
+    </v-main>
+    <v-dialog v-model="showInitializeModal" persistent max-width="600px">
+      <Initialize />
+    </v-dialog>
+  </v-app>
 </template>
+
+<script setup lang="ts">
+import { ref, onMounted } from "vue";
+import { useRouter, useRoute } from 'vue-router';
+import { createVuetify } from 'vuetify';
+import 'vuetify/styles';
+import { VApp, VAppBar, VNavigationDrawer, VList, VListItem, VMain, VContainer, VTextField, VDialog } from 'vuetify/components';
+import Initialize from './Initialize.vue';
+import { checkKeyFileExists } from './helpers/init';
+
+const vuetify = createVuetify();
+
+const drawer = ref(true);
+const items = [
+  { title: 'Secrets', icon: 'mdi-lock', route: '/secrets' },
+  { title: 'Users', icon: 'mdi-account', route: '/users' },
+];
+
+const router = useRouter();
+const route = useRoute();
+const showInitializeModal = ref(false);
+
+function navigateTo(route) {
+  console.log("navigating to route", route);
+  router.push(route);
+}
+
+onMounted(async () => {
+  const keyFileExists = await checkKeyFileExists();
+  if (!keyFileExists) {
+    showInitializeModal.value = true;
+  }
+});
+</script>
 
 <style scoped>
 .container {

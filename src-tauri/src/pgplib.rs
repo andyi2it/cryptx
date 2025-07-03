@@ -1,15 +1,23 @@
 use pgp::composed::{KeyType, SecretKeyParamsBuilder};
 use pgp::types::{CompressionAlgorithm, SecretKeyTrait};
 use pgp::{Deserializable, Message, SignedPublicKey, SignedSecretKey};
+use rand::thread_rng;
+use tauri::Manager;
+//use tauri::path::app_data_dir;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use rand::thread_rng;
 
 use crate::libutils::LibError;
 
 #[tauri::command]
-pub fn generate_keypair(user_id: &str, passphrase: &str, path: &Path) -> Result<(), LibError> {
+pub fn generate_keypair(app_handle: tauri::AppHandle,user_id: &str, passphrase: &str) -> Result<(), LibError> {
+
+    println!("Generating keypair for user: {}", user_id);
+
+    let app_data_path = app_handle.path().app_data_dir().unwrap().display().to_string();
+    println!("App Data Path: {}", app_data_path);
+    let path = Path::new(&app_data_path);
     // Generate secret key parameters
     let secret_key_params = SecretKeyParamsBuilder::default()
         .key_type(KeyType::Rsa(2048))
@@ -25,10 +33,14 @@ pub fn generate_keypair(user_id: &str, passphrase: &str, path: &Path) -> Result<
     // Extract the public key from the secret key
     let public_key = signed_secret_key.public_key();
 
-    let signed_public_key = public_key.sign(thread_rng(), &signed_secret_key, || passphrase.to_string()).unwrap();
+    let signed_public_key = public_key
+        .sign(thread_rng(), &signed_secret_key, || passphrase.to_string())
+        .unwrap();
 
     // Save the secret key to a file
     let secret_key_path = path.join("private_key.asc");
+    println!("Secret Key path is: {:?}", secret_key_path.canonicalize());
+
     let mut secret_key_file = File::create(&secret_key_path)?;
     let bytes = signed_secret_key.to_armored_bytes(None.into())?;
     secret_key_file.write_all(&bytes)?;
@@ -49,7 +61,6 @@ pub fn encrypt_message(public_key_path: &Path, plain_text: &str) -> Result<Strin
     let public_key_str = std::fs::read_to_string(public_key_path)?;
     let public_key = SignedPublicKey::from_string(&public_key_str)?.0;
 
-    
     //Convert PkesBytes to Vec<u8>
     //let message = Message::from_bytes(plain_text.as_bytes()).unwrap();
     //let data = message.compress(CompressionAlgorithm::ZLIB).unwrap();
@@ -58,9 +69,13 @@ pub fn encrypt_message(public_key_path: &Path, plain_text: &str) -> Result<Strin
     let message = Message::new_literal_bytes("", plain_text.as_bytes());
     let compressed_msg = message.compress(CompressionAlgorithm::ZLIB).unwrap();
     let encrypted_msg = compressed_msg
-            .encrypt_to_keys_seipdv1(thread_rng(), pgp::crypto::sym::SymmetricKeyAlgorithm::AES256, &[&public_key])
-            .unwrap();
-        
+        .encrypt_to_keys_seipdv1(
+            thread_rng(),
+            pgp::crypto::sym::SymmetricKeyAlgorithm::AES256,
+            &[&public_key],
+        )
+        .unwrap();
+
     let encrypted_message = encrypted_msg.to_armored_string(None.into()).unwrap();
 
     Ok(encrypted_message)
@@ -73,10 +88,12 @@ pub fn decrypt_message(private_key_path: &Path, encrypted_text: &str) -> Result<
     let private_key = SignedSecretKey::from_string(&private_key_str)?.0;
 
     // Decrypt the message with the private key
-    let message = Message::from_armor_single(encrypted_text.as_bytes()).unwrap().0;
+    let message = Message::from_armor_single(encrypted_text.as_bytes())
+        .unwrap()
+        .0;
 
     let passphrase = "alphagamma";
-    
+
     let decrypted_message: (Message, Vec<pgp::types::KeyId>) = message
         .decrypt(|| passphrase.to_string(), &[&private_key])
         .unwrap();
