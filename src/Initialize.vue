@@ -1,6 +1,12 @@
 <template>
   <v-card>
-    <v-card-title>Initial Setup</v-card-title>
+    <v-card-title>
+      Initial Setup
+      <v-spacer></v-spacer>
+      <v-btn icon @click="$emit('close')" aria-label="Close">
+        <v-icon>mdi-close</v-icon>
+      </v-btn>
+    </v-card-title>
     <v-card-text>
       <v-form>
         <v-text-field v-model="email" label="Email" required></v-text-field>
