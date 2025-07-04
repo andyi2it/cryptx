@@ -14,7 +14,7 @@
     </v-navigation-drawer>
 
     <v-app-bar app>
-      <v-toolbar-title>CryptX</v-toolbar-title>
+      <v-toolbar-title>{{ pageTitle }}</v-toolbar-title>
     </v-app-bar>
 
     <v-main>
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRouter, useRoute } from 'vue-router';
 import { createVuetify } from 'vuetify';
 import 'vuetify/styles';
@@ -60,6 +60,17 @@ onMounted(async () => {
     showInitializeModal.value = true;
   }
 });
+
+const pageTitle = computed(() => {
+  switch (route.path) {
+    case '/secrets':
+      return 'Secrets'
+    case '/users':
+      return 'Users'
+    default:
+      return 'CryptX'
+  }
+})
 </script>
 
 <style scoped>
