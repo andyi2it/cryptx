@@ -1,29 +1,54 @@
 <template>
-  <v-app :vuetify="vuetify">
-    <v-navigation-drawer v-model="drawer" app>
-      <v-list>
+  <v-app :theme="currentTheme">
+    <v-navigation-drawer v-model="drawer" app width="280">
+      <v-list nav>
         <v-list-item
           v-for="item in items"
           :key="item.title"
           @click="navigateTo(item.route)"
-          :active="route.path === item.route"
+          :class="{ 'v-list-item--active': route.path === item.route }"
+          :prepend-icon="item.icon"
         >
-          <v-list-item-title>{{ item.title }}</v-list-item-title>
+          <v-list-item-title :class="{ 'font-weight-bold': route.path === item.route }">
+            {{ item.title }}
+          </v-list-item-title>
         </v-list-item>
       </v-list>
     </v-navigation-drawer>
 
-    <v-app-bar app>
-      <v-toolbar-title>{{ pageTitle }}</v-toolbar-title>
+    <v-app-bar app elevation="2">
+      <v-app-bar-nav-icon @click="drawer = !drawer" />
+      <v-app-bar-title>{{ pageTitle }}</v-app-bar-title>
+      <v-spacer />
+      
+      <!-- Dark mode switch -->
+      <div class="d-flex align-center mr-4">
+        <v-icon class="mr-2" :color="isDark ? 'grey' : 'orange'">
+          mdi-weather-sunny
+        </v-icon>
+        <v-switch
+          v-model="isDark"
+          @change="toggleTheme"
+          hide-details
+          density="compact"
+          color="primary"
+        >
+          <v-tooltip activator="parent">
+            {{ isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode' }}
+          </v-tooltip>
+        </v-switch>
+        <v-icon class="ml-2" :color="isDark ? 'blue' : 'grey'">
+          mdi-weather-night
+        </v-icon>
+      </div>
     </v-app-bar>
 
     <v-main>
-      <v-container>
-        <router-view></router-view>
-      </v-container>
+      <router-view />
     </v-main>
+    
     <v-dialog v-model="showInitializeModal" persistent max-width="600px">
-      <Initialize />
+      <Initialize @close="showInitializeModal = false" />
     </v-dialog>
   </v-app>
 </template>
@@ -31,30 +56,42 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { useRouter, useRoute } from 'vue-router';
-import { createVuetify } from 'vuetify';
-import 'vuetify/styles';
-import { VApp, VAppBar, VNavigationDrawer, VList, VListItem, VMain, VContainer, VTextField, VDialog } from 'vuetify/components';
+import { useTheme } from 'vuetify';
 import Initialize from './Initialize.vue';
 import { checkKeyFileExists } from './helpers/init';
 
-const vuetify = createVuetify();
+const theme = useTheme();
+const isDark = ref(false);
+const currentTheme = computed(() => isDark.value ? 'dark' : 'light');
 
 const drawer = ref(true);
 const items = [
-  { title: 'Secrets', icon: 'mdi-lock', route: '/secrets' },
-  { title: 'Users', icon: 'mdi-account', route: '/users' },
+  { title: 'Secrets', icon: 'mdi-shield-key', route: '/secrets' },
+  { title: 'Users', icon: 'mdi-account-group', route: '/users' },
 ];
 
 const router = useRouter();
 const route = useRoute();
 const showInitializeModal = ref(false);
 
-function navigateTo(route) {
-  console.log("navigating to route", route);
-  router.push(route);
+function navigateTo(routePath: string) {
+  console.log("navigating to route", routePath);
+  router.push(routePath);
+}
+
+function toggleTheme() {
+  theme.global.name.value = currentTheme.value;
+  localStorage.setItem('cryptx-theme', currentTheme.value);
 }
 
 onMounted(async () => {
+  // Load saved theme preference
+  const savedTheme = localStorage.getItem('cryptx-theme');
+  if (savedTheme) {
+    isDark.value = savedTheme === 'dark';
+    theme.global.name.value = savedTheme;
+  }
+
   const keyFileExists = await checkKeyFileExists();
   if (!keyFileExists) {
     showInitializeModal.value = true;
@@ -64,9 +101,9 @@ onMounted(async () => {
 const pageTitle = computed(() => {
   switch (route.path) {
     case '/secrets':
-      return 'Secrets'
+      return 'Secrets Manager'
     case '/users':
-      return 'Users'
+      return 'User Management'
     default:
       return 'CryptX'
   }
