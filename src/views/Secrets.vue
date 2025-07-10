@@ -34,7 +34,7 @@ const shareDialog = ref(false);
 const selectedSecretForShare = ref<any>(null);
 const userSearch = ref('');
 const selectedUserForShare = ref<number | null>(null);
-const users = ref<Array<{ id: number; name: string; public_key: string }>>([]);
+const users = ref<Array<{ id: number; name: string; email: string; public_key: string }>>([]);
 
 const filteredUsersForShare = computed(() => {
   return users.value.filter(user => 
@@ -410,9 +410,9 @@ onMounted(async () => {
             />
             <v-text-field
               v-model="newSecret.key"
-              label="Secret Key"
+              :label="isCreateMode ? 'Secret Value' : 'Encrypted secret value'"
               type="password"
-              :rules="[v => !!v || 'Secret key is required']"
+              :rules="[v => !!v || 'Secret Value is required']"
               required
               variant="outlined"
             />
@@ -499,7 +499,7 @@ onMounted(async () => {
           />
           <v-text-field
             v-model="editableSecret.key"
-            label="Secret Key"
+            label="Secret Value"
             :type="showSecretKey ? 'text' : 'password'"
             :readonly="!isEditingSecret"
             variant="outlined"

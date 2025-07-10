@@ -1,4 +1,5 @@
 import Database from '@tauri-apps/plugin-sql';
+import { invoke } from '@tauri-apps/api/core';
 
 let database: Database | null = null;
 
@@ -18,6 +19,20 @@ export async function getDatabase(): Promise<Database> {
 export async function initDatabase() {
   try {
     const db = await getDatabase();
+    
+    // Drop existing users table to add email field and remove old records
+    // await db.execute('DROP TABLE IF EXISTS users');
+
+    // Create users table with email field
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL,
+        public_key TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
     
     // Check if secrets table exists and has the right structure
     const tableInfo = await db.select("PRAGMA table_info(secrets)");
@@ -69,23 +84,10 @@ export async function initDatabase() {
       console.log("Created new secrets table");
     }
     
-    // Create users table if it doesn't exist
-    const userTableExists = await db.select("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
-    if (userTableExists.length === 0) {
-      await db.execute(`
-        CREATE TABLE users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL UNIQUE,
-          public_key TEXT NOT NULL
-        )
-      `);
-      console.log("Created users table");
-    }
-    
     console.log("Database initialization completed successfully");
     return db;
   } catch (error) {
-    console.error("Failed to initialize database:", error);
+    console.error('Database initialization failed:', error);
     throw error;
   }
 }
@@ -199,27 +201,30 @@ export async function getSecrets(): Promise<Array<{ id: number; name: string; ke
   }
 }
 
-export async function addUser(name: string, publicKey: string) {
+export async function addUser(name: string, email: string, publicKey: string): Promise<void> {
   try {
     const db = await getDatabase();
-    await db.execute("INSERT INTO users (name, public_key) VALUES (?, ?)", [name, publicKey]);
+    await db.execute(
+      'INSERT INTO users (name, email, public_key) VALUES ($1, $2, $3)',
+      [name, email, publicKey]
+    );
     console.log("User added successfully");
   } catch (error) {
-    console.error("Failed to add user:", error);
+    console.error('Failed to add user:', error);
     throw error;
   }
 }
 
-export async function getUsers(): Promise<Array<{ id: number; name: string; public_key: string }>> {
+export async function getUsers(): Promise<Array<{ id: number; name: string; email: string; public_key: string }>> {
   try {
     const db = await getDatabase();
-    const result = await db.select<Array<{ id: number; name: string; public_key: string }>>(
-      "SELECT id, name, public_key FROM users"
+    const result = await db.select<Array<{ id: number; name: string; email: string; public_key: string }>>(
+      'SELECT id, name, email, public_key FROM users ORDER BY name'
     );
     return result;
   } catch (error) {
-    console.error("Failed to get users:", error);
-    return [];
+    console.error('Failed to get users:', error);
+    throw error;
   }
 }
 

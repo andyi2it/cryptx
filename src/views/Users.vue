@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { addUser, getUsers, initDatabase, deleteUser as dbDeleteUser } from '../lib/database';
 
 const search = ref('');
-const users = ref<Array<{ id: number; name: string; public_key: string }>>([]);
+const users = ref<Array<{ id: number; name: string; email: string; public_key: string }>>([]);
 
 const filteredUsers = computed(() => {
   return users.value.filter(user => 
@@ -17,16 +17,17 @@ const valid = ref(false);
 const form = ref();
 const newUser = ref({
   name: '',
+  email: '',
   publicKey: ''
 });
 
 // User details dialog state
 const userDetailsDialog = ref(false);
-const selectedUser = ref<{ id: number; name: string; public_key: string } | null>(null);
+const selectedUser = ref<{ id: number; name: string; email: string; public_key: string } | null>(null);
 
 // Confirmation dialog state
 const confirmDeleteDialog = ref(false);
-const userToDelete = ref<{ id: number; name: string; public_key: string } | null>(null);
+const userToDelete = ref<{ id: number; name: string; email: string; public_key: string } | null>(null);
 
 const loadUsers = async () => {
   try {
@@ -42,7 +43,7 @@ const openAddUserDialog = () => {
 
 const closeAddUserDialog = () => {
   addUserDialog.value = false;
-  newUser.value = { name: '', publicKey: '' };
+  newUser.value = { name: '', email: '', publicKey: '' };
   if (form.value) {
     form.value.reset();
   }
@@ -51,7 +52,7 @@ const closeAddUserDialog = () => {
 const saveUser = async () => {
   if (valid.value) {
     try {
-      await addUser(newUser.value.name, newUser.value.publicKey);
+      await addUser(newUser.value.name, newUser.value.email, newUser.value.publicKey);
       await loadUsers(); // Refresh the list
       closeAddUserDialog();
     } catch (error) {
@@ -61,7 +62,7 @@ const saveUser = async () => {
   }
 };
 
-const openUserDetails = (user: { id: number; name: string; public_key: string }) => {
+const openUserDetails = (user: { id: number; name: string; email: string; public_key: string }) => {
   selectedUser.value = user;
   userDetailsDialog.value = true;
 };
@@ -72,7 +73,7 @@ const closeUserDetails = () => {
 };
 
 // Update deleteUser function
-const confirmDeleteUser = (user: { id: number; name: string; public_key: string }) => {
+const confirmDeleteUser = (user: { id: number; name: string; email: string; public_key: string }) => {
   userToDelete.value = user;
   confirmDeleteDialog.value = true;
 };
@@ -194,6 +195,14 @@ onMounted(async () => {
               variant="outlined"
               class="mb-3"
             />
+            <v-text-field
+              v-model="newUser.email"
+              label="Email"
+              :rules="[v => !!v || 'Email is required', v => /.+@.+\..+/.test(v) || 'Email must be valid']"
+              required
+              variant="outlined"
+              class="mb-3"
+            />
             <v-textarea
               v-model="newUser.publicKey"
               label="Public Key"
@@ -222,6 +231,13 @@ onMounted(async () => {
           <v-text-field
             :model-value="selectedUser.name"
             label="User Name"
+            readonly
+            variant="outlined"
+            class="mb-3"
+          />
+          <v-text-field
+            :model-value="selectedUser.email"
+            label="Email"
             readonly
             variant="outlined"
             class="mb-3"
