@@ -11,11 +11,19 @@ use std::path::Path;
 use crate::libutils::LibError;
 
 #[tauri::command]
-pub fn generate_keypair(app_handle: tauri::AppHandle,user_id: &str, passphrase: &str) -> Result<(), LibError> {
-
+pub fn generate_keypair(
+    app_handle: tauri::AppHandle,
+    user_id: &str,
+    passphrase: &str,
+) -> Result<(), LibError> {
     println!("Generating keypair for user: {}", user_id);
 
-    let app_data_path = app_handle.path().app_data_dir().unwrap().display().to_string();
+    let app_data_path = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap()
+        .display()
+        .to_string();
     println!("App Data Path: {}", app_data_path);
     let path = Path::new(&app_data_path);
     // Generate secret key parameters

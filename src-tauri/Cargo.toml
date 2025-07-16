@@ -26,3 +26,4 @@ pgp = "0.15.0"
 rand = "0.8.5"
 thiserror = "2.0.12"
 tauri-plugin-fs = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
