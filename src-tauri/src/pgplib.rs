@@ -13,10 +13,10 @@ use crate::libutils::LibError;
 #[tauri::command]
 pub fn generate_keypair(
     app_handle: tauri::AppHandle,
-    user_id: &str,
+    userId: &str,
     passphrase: &str,
 ) -> Result<(), LibError> {
-    println!("Generating keypair for user: {}", user_id);
+    println!("Generating keypair for user: {}", userId);
 
     let app_data_path = app_handle
         .path()
@@ -29,7 +29,7 @@ pub fn generate_keypair(
     // Generate secret key parameters
     let secret_key_params = SecretKeyParamsBuilder::default()
         .key_type(KeyType::Rsa(2048))
-        .primary_user_id(user_id.to_string())
+        .primary_user_id(userId.to_string())
         .passphrase(Some(passphrase.to_string()))
         .build()?;
 
@@ -64,7 +64,13 @@ pub fn generate_keypair(
 }
 
 #[tauri::command]
-pub fn encrypt_message(public_key_path: &Path, plain_text: &str) -> Result<String, LibError> {
+pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result<String, LibError> {
+    let app_data_path = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap();
+    let public_key_path = app_data_path.join("public_key.asc");
+    
     // Read the public key from the specified file
     let public_key_str = std::fs::read_to_string(public_key_path)?;
     let public_key = SignedPublicKey::from_string(&public_key_str)?.0;
@@ -90,24 +96,41 @@ pub fn encrypt_message(public_key_path: &Path, plain_text: &str) -> Result<Strin
 }
 
 #[tauri::command]
-pub fn decrypt_message(private_key_path: &Path, encrypted_text: &str) -> Result<String, LibError> {
+pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passphrase: &str) -> Result<String, LibError> {
+    let app_data_path = app_handle
+        .path()
+        .app_data_dir()
+        .unwrap();
+    let private_key_path = app_data_path.join("private_key.asc");
+    // add print statement for passphrase
+    println!("Decrypting message with passphrase: {}", passphrase);
     // Read the private key from the specified file
     let private_key_str = std::fs::read_to_string(private_key_path)?;
+    println!("Private key string: {}", private_key_str);
     let private_key = SignedSecretKey::from_string(&private_key_str)?.0;
+    println!("Private key successfully loaded.");
 
     // Decrypt the message with the private key
     let message = Message::from_armor_single(encrypted_text.as_bytes())
-        .unwrap()
+        .map_err(|e| LibError::PgpError(pgp::errors::Error::Message(format!("Failed to parse encrypted message: {}", e))))?
         .0;
 
-    let passphrase = "alphagamma";
+    println!("Message successfully parsed.");
 
     let decrypted_message: (Message, Vec<pgp::types::KeyId>) = message
         .decrypt(|| passphrase.to_string(), &[&private_key])
-        .unwrap();
+        .map_err(|e| LibError::PgpError(pgp::errors::Error::Message(format!("Failed to decrypt message (check passphrase and key): {}", e))))?;
 
-    let decrypted_message = decrypted_message.0.decompress().unwrap();
-    let decrypted_message = decrypted_message.get_content().unwrap().unwrap();
+    println!("Message successfully decrypted.");
+    let decrypted_message = decrypted_message.0.decompress()
+        .map_err(|e| LibError::PgpError(pgp::errors::Error::Message(format!("Failed to decompress message: {}", e))))?;
+    
+    println!("Message successfully decompressed.");
+    let decrypted_content = decrypted_message.get_content()
+        .map_err(|e| LibError::PgpError(pgp::errors::Error::Message(format!("Failed to get message content: {}", e))))?
+        .ok_or_else(|| LibError::PgpError(pgp::errors::Error::Message("Message content is empty".to_string())))?;
 
-    Ok(String::from_utf8(decrypted_message).unwrap())
+    println!("Message content successfully retrieved.");
+    String::from_utf8(decrypted_content)
+        .map_err(|e| LibError::PgpError(pgp::errors::Error::Message(format!("Failed to convert message to UTF-8: {}", e))))
 }

@@ -1,16 +1,15 @@
 <template>
-  <v-dialog v-model="show" max-width="400px">
+  <v-dialog v-model="show" max-width="400px" persistent>
     <v-card>
       <v-card-title class="text-center pa-6 position-relative">
         <v-btn
-          icon
           size="small"
           variant="text"
           class="position-absolute"
           style="top: 16px; right: 16px;"
           @click="closeDialog"
         >
-          <v-icon>mdi-close</v-icon>
+          Cancel
         </v-btn>
         <div class="d-flex flex-column align-center">
           <v-icon size="48" color="primary" class="mb-3">mdi-shield-key</v-icon>
@@ -94,6 +93,17 @@
           >
             First time? Setup new account
           </v-btn>
+          
+          <v-btn
+            @click="handleTempInit"
+            variant="outlined"
+            color="secondary"
+            block
+            size="small"
+            class="mt-2"
+          >
+            Temp Init (Dev)
+          </v-btn>
         </v-form>
       </v-card-text>
     </v-card>
@@ -103,6 +113,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { saveLoginCredentials, validateLoginCredentials, hasStoredCredentials, getStoredEmail } from '../helpers/auth';
+import { init } from '../helpers/init';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -151,8 +162,15 @@ const handleLogin = async () => {
   
   try {
     if (isRegistering.value) {
-      // Register new credentials
+      // Register new credentials and generate keys
+      console.log('Registering new account for:', email.value);
       await saveLoginCredentials(email.value, password.value);
+      
+      // Generate PGP keys after saving credentials
+      console.log('Generating PGP keys...');
+      await init(email.value, password.value);
+      console.log('Account setup completed successfully');
+      
       emit('login', {
         email: email.value,
         password: password.value
@@ -174,9 +192,21 @@ const handleLogin = async () => {
     }
   } catch (error) {
     console.error('Login/Registration failed:', error);
-    loginError.value = 'An error occurred. Please try again.';
+    loginError.value = 'Setup failed. Please try again.';
   } finally {
     loading.value = false;
+  }
+};
+
+const handleTempInit = async () => {
+  try {
+    const dummyEmail = 'test@example.com';
+    const dummyPassword = 'temp123456';
+    
+    await init(dummyEmail, dummyPassword);
+    console.log('Temp init completed with dummy data');
+  } catch (error) {
+    console.error('Temp init failed:', error);
   }
 };
 
@@ -211,3 +241,4 @@ const closeDialog = () => {
   show.value = false;
 };
 </script>
+<!-- </script> -->

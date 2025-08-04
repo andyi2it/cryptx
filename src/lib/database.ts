@@ -38,7 +38,7 @@ export async function initDatabase() {
     const tableInfo = await db.select("PRAGMA table_info(secrets)");
     const columns = tableInfo.map((col: any) => col.name);
     
-    const requiredColumns = ['id', 'name', 'key', 'created_at', 'updated_at', 'deleted'];
+    const requiredColumns = ['id', 'name', 'key', 'created_at', 'updated_at'];
     const missingColumns = requiredColumns.filter(col => !columns.includes(col));
     
     if (missingColumns.length > 0 && tableInfo.length > 0) {
@@ -56,15 +56,14 @@ export async function initDatabase() {
           name TEXT NOT NULL UNIQUE,
           key TEXT NOT NULL,
           created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          deleted INTEGER DEFAULT 0
+          updated_at TEXT DEFAULT (datetime('now'))
         )
       `);
       
       // Restore data
       for (const secret of existingSecrets) {
         await db.execute(
-          "INSERT INTO secrets (name, key, created_at, updated_at, deleted) VALUES ($1, $2, datetime('now'), datetime('now'), 0)",
+          "INSERT INTO secrets (name, key, created_at, updated_at) VALUES ($1, $2, datetime('now'), datetime('now'))",
           [secret.name, secret.key]
         );
       }
@@ -77,8 +76,7 @@ export async function initDatabase() {
           name TEXT NOT NULL UNIQUE,
           key TEXT NOT NULL,
           created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          deleted INTEGER DEFAULT 0
+          updated_at TEXT DEFAULT (datetime('now'))
         )
       `);
       console.log("Created new secrets table");
@@ -131,10 +129,7 @@ export async function updateSecret(id: number, name: string, key: string) {
     let query: string;
     let params: any[];
     
-    if (columns.includes('updated_at') && columns.includes('deleted')) {
-      query = "UPDATE secrets SET name = $1, key = $2, updated_at = datetime('now') WHERE id = $3 AND deleted = 0";
-      params = [name, key, id];
-    } else if (columns.includes('updated_at')) {
+    if (columns.includes('updated_at')) {
       query = "UPDATE secrets SET name = $1, key = $2, updated_at = datetime('now') WHERE id = $3";
       params = [name, key, id];
     } else {
@@ -155,7 +150,7 @@ export async function deleteSecret(id: number) {
   try {
     const db = await getDatabase();
     const result = await db.execute(
-      "UPDATE secrets SET deleted = 1, updated_at = datetime('now') WHERE id = $1", 
+      "DELETE FROM secrets WHERE id = $1", 
       [id]
     );
     console.log("Secret deleted successfully, result:", result);
@@ -185,12 +180,7 @@ export async function getSecrets(): Promise<Array<{ id: number; name: string; ke
     } else {
       query += ", datetime('now') as updated_at";
     }
-    query += " FROM secrets";
-    
-    if (columns.includes('deleted')) {
-      query += " WHERE deleted = 0";
-    }
-    query += " ORDER BY id DESC";
+    query += " FROM secrets ORDER BY id DESC";
     
     const result = await db.select<Array<{ id: number; name: string; key: string; created_at: string; updated_at: string }>>(query);
     console.log("Secrets retrieved successfully, count:", result.length);
@@ -239,3 +229,13 @@ export async function deleteUser(id: number) {
     throw error;
   }
 }
+// export async function deleteUser(id: number) {
+//   try {
+//     const db = await getDatabase();
+//     await db.execute("DELETE FROM users WHERE id = ?", [id]);
+//     console.log("User deleted successfully");
+//   } catch (error) {
+//     console.error("Failed to delete user:", error);
+//     throw error;
+//   }
+// }
