@@ -1,5 +1,4 @@
 import Database from '@tauri-apps/plugin-sql';
-import { invoke } from '@tauri-apps/api/core';
 
 let database: Database | null = null;
 
@@ -35,7 +34,7 @@ export async function initDatabase() {
     `);
     
     // Check if secrets table exists and has the right structure
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
     const requiredColumns = ['id', 'name', 'key', 'created_at', 'updated_at'];
@@ -46,7 +45,7 @@ export async function initDatabase() {
       console.log("Recreating secrets table with proper structure...");
       
       // Backup existing data
-      const existingSecrets = await db.select("SELECT * FROM secrets");
+      const existingSecrets = await db.select("SELECT * FROM secrets") as Array<{ name: string; key: string }>;
       
       // Drop and recreate table
       await db.execute("DROP TABLE IF EXISTS secrets");
@@ -95,7 +94,7 @@ export async function addSecret(name: string, key: string) {
     const db = await getDatabase();
     
     // Check what columns exist before inserting
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
     let query: string;
@@ -123,7 +122,7 @@ export async function updateSecret(id: number, name: string, key: string) {
     const db = await getDatabase();
     
     // Check what columns exist before updating
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
     let query: string;
@@ -166,7 +165,7 @@ export async function getSecrets(): Promise<Array<{ id: number; name: string; ke
     const db = await getDatabase();
     
     // First check if the columns exist
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
     let query = "SELECT id, name, key";
@@ -229,13 +228,98 @@ export async function deleteUser(id: number) {
     throw error;
   }
 }
-// export async function deleteUser(id: number) {
-//   try {
-//     const db = await getDatabase();
-//     await db.execute("DELETE FROM users WHERE id = ?", [id]);
-//     console.log("User deleted successfully");
-//   } catch (error) {
-//     console.error("Failed to delete user:", error);
-//     throw error;
-//   }
-// }
+
+// Add new functions for clearing all data
+
+export async function deleteAllUsers(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    const result = await db.execute("DELETE FROM users");
+    console.log("All users deleted successfully", result);
+  } catch (error) {
+    console.error("Failed to delete all users:", error);
+    throw error;
+  }
+}
+
+export async function deleteAllSecrets(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    const result = await db.execute("DELETE FROM secrets");
+    console.log("All secrets deleted successfully", result);
+  } catch (error) {
+    console.error("Failed to delete all secrets:", error);
+    throw error;
+  }
+}
+
+export async function deleteAllData(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    await db.execute("DELETE FROM secrets");
+    await db.execute("DELETE FROM users");
+    console.log("All data deleted successfully - fresh start ready");
+  } catch (error) {
+    console.error("Failed to delete all data:", error);
+    throw error;
+  }
+}
+
+export async function dropAllTables(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    await db.execute("DROP TABLE IF EXISTS secrets");
+    await db.execute("DROP TABLE IF EXISTS users");
+    console.log("All tables dropped successfully - database reset complete");
+  } catch (error) {
+    console.error("Failed to drop tables:", error);
+    throw error;
+  }
+}
+
+export async function resetDatabase(): Promise<void> {
+  try {
+    console.log("Resetting database for fresh start...");
+    
+    // Drop all tables
+    await dropAllTables();
+    
+    // Reinitialize database with fresh tables
+    await initDatabase();
+    
+    console.log("Database reset complete - ready for fresh setup");
+  } catch (error) {
+    console.error("Failed to reset database:", error);
+    throw error;
+  }
+}
+
+// Helper function to get counts for verification
+export async function getDatabaseStats(): Promise<{ userCount: number; secretCount: number }> {
+  try {
+    const db = await getDatabase();
+    
+    let userCount = 0;
+    let secretCount = 0;
+    
+    try {
+      const userResult = await db.select("SELECT COUNT(*) as count FROM users") as Array<{ count: number }>;
+      userCount = userResult[0]?.count || 0;
+    } catch (e) {
+      console.log("Users table doesn't exist yet");
+    }
+    
+    try {
+      const secretResult = await db.select("SELECT COUNT(*) as count FROM secrets") as Array<{ count: number }>;
+      secretCount = secretResult[0]?.count || 0;
+    } catch (e) {
+      console.log("Secrets table doesn't exist yet");
+    }
+    
+    return { userCount, secretCount };
+  } catch (error) {
+    console.error("Failed to get database stats:", error);
+    return { userCount: 0, secretCount: 0 };
+  }
+}
+

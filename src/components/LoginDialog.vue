@@ -2,7 +2,7 @@
   <v-dialog v-model="show" max-width="400px" persistent>
     <v-card>
       <v-card-title class="text-center pa-6 position-relative">
-        <v-btn
+        <!-- <v-btn
           size="small"
           variant="text"
           class="position-absolute"
@@ -10,7 +10,7 @@
           @click="closeDialog"
         >
           Cancel
-        </v-btn>
+        </v-btn> -->
         <div class="d-flex flex-column align-center">
           <v-icon size="48" color="primary" class="mb-3">mdi-shield-key</v-icon>
           <h2 class="text-h5">{{ isRegistering ? 'Setup CryptX' : 'CryptX Login' }}</h2>
@@ -72,6 +72,16 @@
             <strong>Security Note:</strong> {{ isRegistering ? 'Choose a strong master password. This will be used to secure your data.' : 'Enter your master password to access CryptX.' }}
           </v-alert>
           
+          <v-alert 
+            v-if="isRegistering"
+            type="error" 
+            variant="tonal" 
+            class="mb-4 text-caption"
+            density="compact"
+          >
+            <strong>Warning:</strong> Don't use your mail password for setup
+          </v-alert>
+          
           <v-btn
             type="submit"
             color="primary"
@@ -94,16 +104,6 @@
             First time? Setup new account
           </v-btn>
           
-          <v-btn
-            @click="handleTempInit"
-            variant="outlined"
-            color="secondary"
-            block
-            size="small"
-            class="mt-2"
-          >
-            Temp Init (Dev)
-          </v-btn>
         </v-form>
       </v-card-text>
     </v-card>
@@ -171,10 +171,13 @@ const handleLogin = async () => {
       await init(email.value, password.value);
       console.log('Account setup completed successfully');
       
+      // Emit login event with credentials
       emit('login', {
         email: email.value,
         password: password.value
       });
+      
+      // Force close the dialog
       show.value = false;
     } else {
       // Validate existing credentials
@@ -198,17 +201,6 @@ const handleLogin = async () => {
   }
 };
 
-const handleTempInit = async () => {
-  try {
-    const dummyEmail = 'test@example.com';
-    const dummyPassword = 'temp123456';
-    
-    await init(dummyEmail, dummyPassword);
-    console.log('Temp init completed with dummy data');
-  } catch (error) {
-    console.error('Temp init failed:', error);
-  }
-};
 
 const toggleMode = () => {
   isRegistering.value = !isRegistering.value;

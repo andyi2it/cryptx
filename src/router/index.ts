@@ -1,11 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import Users from '../views/Users.vue';
-import Secrets from '../views/Secrets.vue';
 
 const routes = [
-  { path: '/', redirect: '/secrets' },
-  { path: '/users', component: Users },
-  { path: '/secrets', component: Secrets }
+  {
+    path: '/',
+    redirect: '/secrets'
+  },
+  {
+    path: '/secrets',
+    name: 'Secrets',
+    component: () => import('../views/Secrets.vue')
+  },
+  {
+    path: '/users',
+    name: 'Users',
+    component: () => import('../views/Users.vue')
+  }
 ];
 
 const router = createRouter({
