@@ -1,5 +1,4 @@
 import Database from '@tauri-apps/plugin-sql';
-import { invoke } from '@tauri-apps/api/core';
 
 let database: Database | null = null;
 
@@ -35,10 +34,10 @@ export async function initDatabase() {
     `);
     
     // Check if secrets table exists and has the right structure
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
-    const requiredColumns = ['id', 'name', 'key', 'created_at', 'updated_at', 'deleted'];
+    const requiredColumns = ['id', 'name', 'key', 'created_at', 'updated_at'];
     const missingColumns = requiredColumns.filter(col => !columns.includes(col));
     
     if (missingColumns.length > 0 && tableInfo.length > 0) {
@@ -46,7 +45,7 @@ export async function initDatabase() {
       console.log("Recreating secrets table with proper structure...");
       
       // Backup existing data
-      const existingSecrets = await db.select("SELECT * FROM secrets");
+      const existingSecrets = await db.select("SELECT * FROM secrets") as Array<{ name: string; key: string }>;
       
       // Drop and recreate table
       await db.execute("DROP TABLE IF EXISTS secrets");
@@ -56,15 +55,14 @@ export async function initDatabase() {
           name TEXT NOT NULL UNIQUE,
           key TEXT NOT NULL,
           created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          deleted INTEGER DEFAULT 0
+          updated_at TEXT DEFAULT (datetime('now'))
         )
       `);
       
       // Restore data
       for (const secret of existingSecrets) {
         await db.execute(
-          "INSERT INTO secrets (name, key, created_at, updated_at, deleted) VALUES ($1, $2, datetime('now'), datetime('now'), 0)",
+          "INSERT INTO secrets (name, key, created_at, updated_at) VALUES ($1, $2, datetime('now'), datetime('now'))",
           [secret.name, secret.key]
         );
       }
@@ -77,8 +75,7 @@ export async function initDatabase() {
           name TEXT NOT NULL UNIQUE,
           key TEXT NOT NULL,
           created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          deleted INTEGER DEFAULT 0
+          updated_at TEXT DEFAULT (datetime('now'))
         )
       `);
       console.log("Created new secrets table");
@@ -97,7 +94,7 @@ export async function addSecret(name: string, key: string) {
     const db = await getDatabase();
     
     // Check what columns exist before inserting
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
     let query: string;
@@ -125,16 +122,13 @@ export async function updateSecret(id: number, name: string, key: string) {
     const db = await getDatabase();
     
     // Check what columns exist before updating
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
     let query: string;
     let params: any[];
     
-    if (columns.includes('updated_at') && columns.includes('deleted')) {
-      query = "UPDATE secrets SET name = $1, key = $2, updated_at = datetime('now') WHERE id = $3 AND deleted = 0";
-      params = [name, key, id];
-    } else if (columns.includes('updated_at')) {
+    if (columns.includes('updated_at')) {
       query = "UPDATE secrets SET name = $1, key = $2, updated_at = datetime('now') WHERE id = $3";
       params = [name, key, id];
     } else {
@@ -155,7 +149,7 @@ export async function deleteSecret(id: number) {
   try {
     const db = await getDatabase();
     const result = await db.execute(
-      "UPDATE secrets SET deleted = 1, updated_at = datetime('now') WHERE id = $1", 
+      "DELETE FROM secrets WHERE id = $1", 
       [id]
     );
     console.log("Secret deleted successfully, result:", result);
@@ -171,7 +165,7 @@ export async function getSecrets(): Promise<Array<{ id: number; name: string; ke
     const db = await getDatabase();
     
     // First check if the columns exist
-    const tableInfo = await db.select("PRAGMA table_info(secrets)");
+    const tableInfo = await db.select("PRAGMA table_info(secrets)") as Array<{ name: string }>;
     const columns = tableInfo.map((col: any) => col.name);
     
     let query = "SELECT id, name, key";
@@ -185,12 +179,7 @@ export async function getSecrets(): Promise<Array<{ id: number; name: string; ke
     } else {
       query += ", datetime('now') as updated_at";
     }
-    query += " FROM secrets";
-    
-    if (columns.includes('deleted')) {
-      query += " WHERE deleted = 0";
-    }
-    query += " ORDER BY id DESC";
+    query += " FROM secrets ORDER BY id DESC";
     
     const result = await db.select<Array<{ id: number; name: string; key: string; created_at: string; updated_at: string }>>(query);
     console.log("Secrets retrieved successfully, count:", result.length);
@@ -239,3 +228,98 @@ export async function deleteUser(id: number) {
     throw error;
   }
 }
+
+// Add new functions for clearing all data
+
+export async function deleteAllUsers(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    const result = await db.execute("DELETE FROM users");
+    console.log("All users deleted successfully", result);
+  } catch (error) {
+    console.error("Failed to delete all users:", error);
+    throw error;
+  }
+}
+
+export async function deleteAllSecrets(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    const result = await db.execute("DELETE FROM secrets");
+    console.log("All secrets deleted successfully", result);
+  } catch (error) {
+    console.error("Failed to delete all secrets:", error);
+    throw error;
+  }
+}
+
+export async function deleteAllData(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    await db.execute("DELETE FROM secrets");
+    await db.execute("DELETE FROM users");
+    console.log("All data deleted successfully - fresh start ready");
+  } catch (error) {
+    console.error("Failed to delete all data:", error);
+    throw error;
+  }
+}
+
+export async function dropAllTables(): Promise<void> {
+  try {
+    const db = await getDatabase();
+    await db.execute("DROP TABLE IF EXISTS secrets");
+    await db.execute("DROP TABLE IF EXISTS users");
+    console.log("All tables dropped successfully - database reset complete");
+  } catch (error) {
+    console.error("Failed to drop tables:", error);
+    throw error;
+  }
+}
+
+export async function resetDatabase(): Promise<void> {
+  try {
+    console.log("Resetting database for fresh start...");
+    
+    // Drop all tables
+    await dropAllTables();
+    
+    // Reinitialize database with fresh tables
+    await initDatabase();
+    
+    console.log("Database reset complete - ready for fresh setup");
+  } catch (error) {
+    console.error("Failed to reset database:", error);
+    throw error;
+  }
+}
+
+// Helper function to get counts for verification
+export async function getDatabaseStats(): Promise<{ userCount: number; secretCount: number }> {
+  try {
+    const db = await getDatabase();
+    
+    let userCount = 0;
+    let secretCount = 0;
+    
+    try {
+      const userResult = await db.select("SELECT COUNT(*) as count FROM users") as Array<{ count: number }>;
+      userCount = userResult[0]?.count || 0;
+    } catch (e) {
+      console.log("Users table doesn't exist yet");
+    }
+    
+    try {
+      const secretResult = await db.select("SELECT COUNT(*) as count FROM secrets") as Array<{ count: number }>;
+      secretCount = secretResult[0]?.count || 0;
+    } catch (e) {
+      console.log("Secrets table doesn't exist yet");
+    }
+    
+    return { userCount, secretCount };
+  } catch (error) {
+    console.error("Failed to get database stats:", error);
+    return { userCount: 0, secretCount: 0 };
+  }
+}
+

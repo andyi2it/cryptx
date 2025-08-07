@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { addSecret, getSecrets, getUsers, initDatabase, updateSecret, deleteSecret as dbDeleteSecret } from '../lib/database';
+import { invoke } from '@tauri-apps/api/core';
 
 const search = ref('');
 const secrets = ref<Array<{ 
@@ -53,6 +54,14 @@ const editableSecret = ref({ name: '', key: '' });
 const confirmDeleteDialog = ref(false);
 const secretToDelete = ref<{ id: number; name: string; key: string } | null>(null);
 
+// Password prompt dialog state
+const passwordPromptDialog = ref(false);
+const masterPassword = ref('');
+const passwordPromptValid = ref(false);
+const passwordForm = ref();
+const isValidatingPassword = ref(false);
+const passwordErrorMessage = ref('');
+
 const saveSecret = async () => {
   console.log("Save secret called, form valid:", valid.value);
   console.log("New secret data:", newSecret.value);
@@ -70,8 +79,17 @@ const saveSecret = async () => {
   }
   
   try {
-    console.log("Attempting to save secret:", newSecret.value.name);
-    await addSecret(newSecret.value.name, newSecret.value.key);
+    console.log("Attempting to encrypt and save secret:", newSecret.value.name);
+    
+    // Encrypt the secret value before storing in database
+    const encryptedKey = await invoke('encrypt_message', {
+      plainText: newSecret.value.key
+    });
+    
+    console.log("Secret encrypted successfully");
+    
+    // Save the secret with encrypted value
+    await addSecret(newSecret.value.name, encryptedKey as string);
     console.log("Secret saved successfully");
     await loadSecrets();
     closeImportDialog();
@@ -185,10 +203,106 @@ const cancelDelete = () => {
   secretToDelete.value = null;
 };
 
+const toggleSecretVisibility = async () => {
+  if (!showSecretKey.value) {
+    // Show password prompt before revealing the secret
+    passwordPromptDialog.value = true;
+    masterPassword.value = '';
+  } else {
+    // Hide the secret
+    showSecretKey.value = false;
+  }
+};
+
+const validateMasterPassword = async () => {
+  if (!passwordPromptValid.value || !masterPassword.value) {
+    return;
+  }
+
+  try {
+    isValidatingPassword.value = true;
+    passwordErrorMessage.value = '';
+    
+    // Get app data directory
+    const appDataDir = await invoke('get_app_data_dir') as string;
+    const credentialsPath = await invoke('join_path', {
+      base: appDataDir,
+      segment: 'login_credentials.json'
+    }) as string;
+
+    // Check if credentials file exists
+    const fileExists = await invoke('file_exists', { path: credentialsPath }) as boolean;
+    if (!fileExists) {
+      passwordErrorMessage.value = 'Master password not set. Please set up your master password first.';
+      return;
+    }
+
+    // Read credentials file
+    const credentialsContent = await invoke('read_text_file', { path: credentialsPath }) as string;
+    const credentials = JSON.parse(credentialsContent);
+
+    // Validate password hash
+    const isValidPassword = await validatePasswordHash(masterPassword.value, credentials.passwordHash);
+    console.log("masterPassword.value:", masterPassword.value)
+    if (isValidPassword && selectedSecretDetails.value) {
+      try {
+        // Decrypt the secret using the master password as passphrase
+        const decryptedSecret = await invoke('decrypt_message', {
+          encryptedText: selectedSecretDetails.value.key,
+          passphrase: masterPassword.value
+        }) as string;
+        
+        // Update the editable secret with decrypted value
+        editableSecret.value.key = decryptedSecret;
+        showSecretKey.value = true;
+        passwordPromptDialog.value = false;
+        masterPassword.value = '';
+        passwordErrorMessage.value = '';
+      } catch (decryptError) {
+        console.error('Decryption failed:', decryptError);
+        passwordErrorMessage.value = 'Failed to decrypt secret. The master password may be incorrect or the secret data is corrupted.';
+      }
+    } else {
+      passwordErrorMessage.value = 'Invalid master password. Please try again.';
+    }
+  } catch (error) {
+    console.error('Failed to validate password:', error);
+    passwordErrorMessage.value = 'An error occurred while validating the password. Please try again.';
+  } finally {
+    isValidatingPassword.value = false;
+  }
+};
+
+const validatePasswordHash = async (password: string, storedHash: string): Promise<boolean> => {
+  try {
+    // Use proper hash function from auth helper
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    return passwordHash === storedHash;
+  } catch (error) {
+    console.error('Password validation error:', error);
+    return false;
+  }
+};
+
+const cancelPasswordPrompt = () => {
+  passwordPromptDialog.value = false;
+  masterPassword.value = '';
+  passwordErrorMessage.value = '';
+  if (passwordForm.value) {
+    passwordForm.value.reset();
+  }
+};
+
 const openSecretDetails = (secret: { id: number; name: string; key: string; created_at: string; updated_at: string }) => {
   selectedSecretDetails.value = secret;
-  editableSecret.value = { name: secret.name, key: secret.key };
+  editableSecret.value = { name: secret.name, key: secret.key }; // Keep encrypted value initially
   isEditingSecret.value = false;
+  showSecretKey.value = false; // Always start with hidden secret
   secretDetailsDialog.value = true;
 };
 
@@ -197,10 +311,6 @@ const closeSecretDetails = () => {
   selectedSecretDetails.value = null;
   showSecretKey.value = false;
   isEditingSecret.value = false;
-};
-
-const toggleSecretVisibility = () => {
-  showSecretKey.value = !showSecretKey.value;
 };
 
 const startEditingSecret = () => {
@@ -220,8 +330,16 @@ const cancelEditingSecret = () => {
 const saveSecretChanges = async () => {
   if (selectedSecretDetails.value && editableSecret.value.name && editableSecret.value.key) {
     try {
-      console.log("Attempting to update secret:", selectedSecretDetails.value.id);
-      await updateSecret(selectedSecretDetails.value.id, editableSecret.value.name, editableSecret.value.key);
+      console.log("Attempting to encrypt and update secret:", selectedSecretDetails.value.id);
+      
+      // Encrypt the secret value before updating in database
+      const encryptedKey = await invoke('encrypt_message', {
+        plainText: editableSecret.value.key
+      });
+      
+      console.log("Secret encrypted successfully for update");
+      
+      await updateSecret(selectedSecretDetails.value.id, editableSecret.value.name, encryptedKey as string);
       console.log("Secret updated successfully");
       await loadSecrets();
       isEditingSecret.value = false;
@@ -260,6 +378,11 @@ const secretNameRules = [
     );
     return !existingSecret || 'Secret name already exists';
   }
+];
+
+const masterPasswordRules = [
+  (v: string) => !!v || 'Master password is required',
+  (v: string) => v.length >= 1 || 'Password cannot be empty'
 ];
 
 onMounted(async () => {
@@ -563,6 +686,55 @@ onMounted(async () => {
           <v-spacer />
           <v-btn @click="cancelDelete">Cancel</v-btn>
           <v-btn color="error" @click="deleteSecret">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Password Prompt Dialog -->
+    <v-dialog v-model="passwordPromptDialog" max-width="400px" persistent>
+      <v-card>
+        <v-card-title>
+          <v-icon class="mr-2">mdi-lock</v-icon>
+          Enter Master Password
+        </v-card-title>
+        <v-card-text>
+          <p class="mb-4">Please enter your master password to view the secret.</p>
+          
+          <!-- Error message display -->
+          <v-alert
+            v-if="passwordErrorMessage"
+            type="error"
+            variant="tonal"
+            class="mb-4"
+            :text="passwordErrorMessage"
+          />
+          
+          <v-form ref="passwordForm" v-model="passwordPromptValid">
+            <v-text-field
+              v-model="masterPassword"
+              label="Master Password"
+              type="password"
+              :rules="masterPasswordRules"
+              variant="outlined"
+              autofocus
+              @keyup.enter="validateMasterPassword"
+              @input="passwordErrorMessage = ''"
+            />
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="cancelPasswordPrompt" :disabled="isValidatingPassword">
+            Cancel
+          </v-btn>
+          <v-btn 
+            color="primary" 
+            @click="validateMasterPassword" 
+            :disabled="!passwordPromptValid || isValidatingPassword"
+            :loading="isValidatingPassword"
+          >
+            Verify
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

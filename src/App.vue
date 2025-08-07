@@ -1,14 +1,22 @@
 <template>
   <v-app :theme="currentTheme">
+    <!-- Loading state -->
+    <div v-if="isLoading" class="d-flex justify-center align-center" style="height: 100vh;">
+      <v-progress-circular indeterminate color="primary" size="64">
+        <template v-slot:default>Loading...</template>
+      </v-progress-circular>
+    </div>
+    
     <!-- Login Dialog -->
     <LoginDialog 
+      v-if="!isLoading"
       v-model="showLoginDialog"
       @login="handleLogin"
       @close="handleLoginClose"
     />
     
     <!-- Main Application Content - only show when logged in -->
-    <template v-if="isLoggedIn">
+    <template v-if="!isLoading && isLoggedIn">
       <v-navigation-drawer v-model="drawer" app width="280">
         <v-list nav>
           <v-list-item
@@ -88,7 +96,8 @@ const showInitializeModal = ref(false);
 
 // Login state
 const isLoggedIn = ref(false);
-const showLoginDialog = ref(true);
+const showLoginDialog = ref(false);
+const isLoading = ref(true);
 
 function navigateTo(routePath: string) {
   console.log("navigating to route", routePath);
@@ -100,10 +109,27 @@ function toggleTheme() {
   localStorage.setItem('cryptx-theme', currentTheme.value);
 }
 
-const handleLogin = (credentials: { email: string; password: string }) => {
+const handleLogin = async (credentials: { email: string; password: string }) => {
   console.log('User logged in with email:', credentials.email);
+  
+  // Set logged in state immediately
   isLoggedIn.value = true;
   showLoginDialog.value = false;
+  
+  // Check if we need to initialize (generate keys)
+  try {
+    const keyFileExists = await checkKeyFileExists();
+    if (!keyFileExists) {
+      console.log('Keys not found, but user is logged in - they should have been generated during setup');
+    }
+    
+    // Navigate to default route
+    if (route.path === '/' || route.path === '') {
+      router.push('/secrets');
+    }
+  } catch (error) {
+    console.error('Error checking key files after login:', error);
+  }
 };
 
 const handleLoginClose = () => {
@@ -111,9 +137,16 @@ const handleLoginClose = () => {
   isLoggedIn.value = true;
   showLoginDialog.value = false;
   console.log('Login dialog closed, allowing access to app');
+  
+  // Navigate to default route
+  if (route.path === '/' || route.path === '') {
+    router.push('/secrets');
+  }
 };
 
 onMounted(async () => {
+  console.log('App mounting...');
+  
   // Load saved theme preference
   const savedTheme = localStorage.getItem('cryptx-theme');
   if (savedTheme) {
@@ -121,14 +154,11 @@ onMounted(async () => {
     theme.global.name.value = savedTheme;
   }
 
-  const keyFileExists = await checkKeyFileExists();
-  if (!keyFileExists) {
-    showInitializeModal.value = true;
-  }
-
-  // Check if user has stored credentials
   try {
+    // Check if user has stored credentials
     const hasCredentials = await hasStoredCredentials();
+    console.log('Has stored credentials:', hasCredentials);
+    
     if (hasCredentials) {
       // Show login dialog to validate credentials
       showLoginDialog.value = true;
@@ -142,6 +172,8 @@ onMounted(async () => {
     console.error('Failed to check stored credentials:', error);
     showLoginDialog.value = true;
     isLoggedIn.value = false;
+  } finally {
+    isLoading.value = false;
   }
 });
 

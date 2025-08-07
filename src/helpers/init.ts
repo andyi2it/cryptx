@@ -11,19 +11,37 @@ export async function checkKeyFileExists() {
 
 }
 
+// window.initPGP = init;  // Attach it to the window
+
+// declare global {
+//   interface Window {
+//     initPGP: (email: string, password: string) => Promise<void>;
+//   }
+// }
+
 export async function init(email: string, password: string) {
-    const keyFileExists = await checkKeyFileExists();
-    if (!keyFileExists) {
-        console.error('Key file does not exist');
-        try {
-            await invoke('generate_keypair', { "userId": email, "passphrase": password });
-            console.log('Key pair generated');
-        } catch (error) {
-            console.error('Failed to generate key pair', error);
-            return;
+    try {
+        console.log('Starting init process for:', email);
+        const keyFileExists = await checkKeyFileExists();
+        if (!keyFileExists) {
+            console.log('Key file does not exist, generating new keypair...');
+            try {
+                await invoke('generate_keypair', { "userId": email, "passphrase": password });
+                console.log('Key pair generated successfully');
+                
+                // Verify the files were created
+                const keyFileExistsAfter = await checkKeyFileExists();
+                console.log('Key file exists after generation:', keyFileExistsAfter);
+            } catch (error) {
+                console.error('Failed to generate key pair:', error);
+                throw error;
+            }
+        } else {
+            console.log('Key file already exists');
         }
-    } else {
-        console.log('Key file exists');
+    } catch (error) {
+        console.error('Init process failed:', error);
+        throw error;
     }
 }
 

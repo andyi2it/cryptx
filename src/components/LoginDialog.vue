@@ -1,17 +1,16 @@
 <template>
-  <v-dialog v-model="show" max-width="400px">
+  <v-dialog v-model="show" max-width="400px" persistent>
     <v-card>
       <v-card-title class="text-center pa-6 position-relative">
-        <v-btn
-          icon
+        <!-- <v-btn
           size="small"
           variant="text"
           class="position-absolute"
           style="top: 16px; right: 16px;"
           @click="closeDialog"
         >
-          <v-icon>mdi-close</v-icon>
-        </v-btn>
+          Cancel
+        </v-btn> -->
         <div class="d-flex flex-column align-center">
           <v-icon size="48" color="primary" class="mb-3">mdi-shield-key</v-icon>
           <h2 class="text-h5">{{ isRegistering ? 'Setup CryptX' : 'CryptX Login' }}</h2>
@@ -73,6 +72,16 @@
             <strong>Security Note:</strong> {{ isRegistering ? 'Choose a strong master password. This will be used to secure your data.' : 'Enter your master password to access CryptX.' }}
           </v-alert>
           
+          <v-alert 
+            v-if="isRegistering"
+            type="error" 
+            variant="tonal" 
+            class="mb-4 text-caption"
+            density="compact"
+          >
+            <strong>Warning:</strong> Don't use your mail password for setup
+          </v-alert>
+          
           <v-btn
             type="submit"
             color="primary"
@@ -94,6 +103,7 @@
           >
             First time? Setup new account
           </v-btn>
+          
         </v-form>
       </v-card-text>
     </v-card>
@@ -103,6 +113,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { saveLoginCredentials, validateLoginCredentials, hasStoredCredentials, getStoredEmail } from '../helpers/auth';
+import { init } from '../helpers/init';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -151,12 +162,22 @@ const handleLogin = async () => {
   
   try {
     if (isRegistering.value) {
-      // Register new credentials
+      // Register new credentials and generate keys
+      console.log('Registering new account for:', email.value);
       await saveLoginCredentials(email.value, password.value);
+      
+      // Generate PGP keys after saving credentials
+      console.log('Generating PGP keys...');
+      await init(email.value, password.value);
+      console.log('Account setup completed successfully');
+      
+      // Emit login event with credentials
       emit('login', {
         email: email.value,
         password: password.value
       });
+      
+      // Force close the dialog
       show.value = false;
     } else {
       // Validate existing credentials
@@ -174,11 +195,12 @@ const handleLogin = async () => {
     }
   } catch (error) {
     console.error('Login/Registration failed:', error);
-    loginError.value = 'An error occurred. Please try again.';
+    loginError.value = 'Setup failed. Please try again.';
   } finally {
     loading.value = false;
   }
 };
+
 
 const toggleMode = () => {
   isRegistering.value = !isRegistering.value;
@@ -211,3 +233,4 @@ const closeDialog = () => {
   show.value = false;
 };
 </script>
+<!-- </script> -->

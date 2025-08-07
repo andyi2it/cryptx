@@ -17,6 +17,15 @@ import { faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons'
 // Add icons to library
 library.add(faEye, faEyeSlash)
 
+// import { dropAllTables } from './lib/database';
+
+// // Call dropAllTables when app starts
+// dropAllTables().then(() => {
+//   console.log('Database tables dropped on app start');
+// }).catch((error) => {
+//   console.error('Failed to drop tables on app start:', error);
+// });
+
 const vuetify = createVuetify({
   components,
   directives,
