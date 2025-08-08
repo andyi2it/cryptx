@@ -38,6 +38,20 @@
         <v-app-bar-title>{{ pageTitle }}</v-app-bar-title>
         <v-spacer />
         
+        <!-- Show My Public Key Button - only visible on Users route -->
+        <v-btn
+          v-if="route.path === '/users'"
+          color="primary"
+          prepend-icon="mdi-key"
+          @click="showMyPublicKey"
+          variant="elevated"
+          size="x-small"
+          class="mr-4 d-flex justify-center align-center"
+          style="min-width: 120px; font-size: 11px;"
+        >
+          Show My Public Key
+        </v-btn>
+        
         <!-- Dark mode switch -->
         <div class="d-flex align-center mr-4">
           <v-icon class="mr-2" :color="isDark ? 'grey' : 'orange'">
@@ -64,8 +78,68 @@
         <router-view />
       </v-main>
       
-      <v-dialog v-model="showInitializeModal" persistent max-width="600px">
-        <Initialize @close="showInitializeModal = false" />
+      <!-- My Public Key Dialog -->
+      <v-dialog v-model="myPublicKeyDialog" max-width="700px">
+        <v-card>
+          <v-card-title class="d-flex justify-space-between align-center">
+            <span class="text-h5">My Public Key</span>
+            <!-- <v-btn
+              icon
+              size="small"
+              variant="text"
+              @click="closeMyPublicKeyDialog"
+            >
+              <v-icon>mdi-close</v-icon>
+            </v-btn> -->
+          </v-card-title>
+          
+          <v-card-text>
+            <div v-if="isLoadingPublicKey" class="d-flex justify-center py-6">
+              <v-progress-circular indeterminate color="primary">
+                Loading...
+              </v-progress-circular>
+            </div>
+            
+            <div v-else-if="publicKeyError" class="text-center py-6">
+              <v-alert type="error" variant="tonal" class="mb-4">
+                {{ publicKeyError }}
+              </v-alert>
+            </div>
+            
+            <div v-else>
+              <p class="text-caption text-grey mb-3">
+                Share this public key with others so they can encrypt messages for you.
+              </p>
+              
+              <v-textarea
+                v-model="myPublicKey"
+                label="Public Key"
+                readonly
+                rows="12"
+                variant="outlined"
+                class="mb-3"
+                style="font-family: monospace; font-size: 12px;"
+              />
+              
+              <div class="d-flex justify-end">
+                <v-btn
+                  color="primary"
+                  prepend-icon="mdi-content-copy"
+                  @click="copyPublicKey"
+                  variant="elevated"
+                >
+                  <font-awesome-icon icon="fa-solid fa-copy" class="mr-2" />
+                  Copy Public Key
+                </v-btn>
+              </div>
+            </div>
+          </v-card-text>
+          
+          <v-card-actions v-if="!isLoadingPublicKey">
+            <v-spacer />
+            <v-btn @click="closeMyPublicKeyDialog">Close</v-btn>
+          </v-card-actions>
+        </v-card>
       </v-dialog>
     </template>
   </v-app>
@@ -79,6 +153,7 @@ import Initialize from './Initialize.vue';
 import LoginDialog from './components/LoginDialog.vue';
 import { checkKeyFileExists } from './helpers/init';
 import { hasStoredCredentials } from './helpers/auth';
+import { invoke } from '@tauri-apps/api/core';
 
 const theme = useTheme();
 const isDark = ref(false);
@@ -98,6 +173,12 @@ const showInitializeModal = ref(false);
 const isLoggedIn = ref(false);
 const showLoginDialog = ref(false);
 const isLoading = ref(true);
+
+// My Public Key dialog state
+const myPublicKeyDialog = ref(false);
+const myPublicKey = ref('');
+const isLoadingPublicKey = ref(false);
+const publicKeyError = ref('');
 
 function navigateTo(routePath: string) {
   console.log("navigating to route", routePath);
@@ -187,6 +268,51 @@ const pageTitle = computed(() => {
       return 'CryptX'
   }
 })
+
+const showMyPublicKey = async () => {
+  myPublicKeyDialog.value = true;
+  isLoadingPublicKey.value = true;
+  publicKeyError.value = '';
+  
+  try {
+    // Get app data directory and read public key
+    const appDataDir = await invoke('get_app_data_dir') as string;
+    const publicKeyPath = await invoke('join_path', {
+      base: appDataDir,
+      segment: 'public_key.asc'
+    }) as string;
+
+    // Check if public key file exists
+    const fileExists = await invoke('file_exists', { path: publicKeyPath }) as boolean;
+    
+    if (fileExists) {
+      const publicKeyContent = await invoke('read_text_file', { path: publicKeyPath }) as string;
+      myPublicKey.value = publicKeyContent;
+    } else {
+      publicKeyError.value = 'Public key file not found. Please set up your account first.';
+    }
+  } catch (error) {
+    console.error('Failed to load public key:', error);
+    publicKeyError.value = 'Failed to load public key. Please try again.';
+  } finally {
+    isLoadingPublicKey.value = false;
+  }
+};
+
+const copyPublicKey = async () => {
+  try {
+    await navigator.clipboard.writeText(myPublicKey.value);
+    console.log('Public key copied to clipboard');
+  } catch (error) {
+    console.error('Failed to copy public key:', error);
+  }
+};
+
+const closeMyPublicKeyDialog = () => {
+  myPublicKeyDialog.value = false;
+  myPublicKey.value = '';
+  publicKeyError.value = '';
+};
 </script>
 
 <style scoped>
