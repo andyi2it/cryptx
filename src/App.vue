@@ -149,7 +149,6 @@
 import { ref, onMounted, computed } from "vue";
 import { useRouter, useRoute } from 'vue-router';
 import { useTheme } from 'vuetify';
-import Initialize from './Initialize.vue';
 import LoginDialog from './components/LoginDialog.vue';
 import { checkKeyFileExists } from './helpers/init';
 import { hasStoredCredentials } from './helpers/auth';
@@ -167,7 +166,6 @@ const items = [
 
 const router = useRouter();
 const route = useRoute();
-const showInitializeModal = ref(false);
 
 // Login state
 const isLoggedIn = ref(false);
