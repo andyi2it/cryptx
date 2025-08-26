@@ -1,31 +1,64 @@
-# Tauri + Vue + TypeScript
+# CryptX
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+A secure desktop application for storing credentials safely and sharing them securely with others.
 
-## Recommended IDE Setup
+## About
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+CryptX is a desktop application built with Tauri that provides a secure way to store and manage your credentials. The application allows you to safely store sensitive information and share it securely when needed.
 
-## Type Support For `.vue` Imports in TS
+## Prerequisites
 
-Since TypeScript cannot handle type information for `.vue` imports, they are shimmed to be a generic Vue component type by default. In most cases this is fine if you don't really care about component prop types outside of templates. However, if you wish to get actual prop types in `.vue` imports (for example to get props validation when using manual `h(...)` calls), you can enable Volar's Take Over mode by following these steps:
+Before running CryptX locally, make sure you have all the required dependencies installed. Follow the Tauri prerequisites guide:
 
-1. Run `Extensions: Show Built-in Extensions` from VS Code's command palette, look for `TypeScript and JavaScript Language Features`, then right click and select `Disable (Workspace)`. By default, Take Over mode will enable itself if the default TypeScript extension is disabled.
-2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
+🔗 [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites)
 
-You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+## Getting Started
 
+### Installation
 
-## Pre-requisites
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-1. Install rust
+### Local Development
 
-2. Install node
+To run the application in development mode:
 
-3. Install
-
-```shell
-sudo apt-get install libsoup-3.0-0
-sudo add-apt-repository https://launchpad.net/ubuntu/jammy/+source/libsoup3
-sudo apt-get install javascriptcoregtk-4.1 libsoup-3.0 webkit2gtk-4.1 -y
+```bash
+npm run tauri dev
 ```
+
+## Building the Application
+
+### Build for Distribution
+
+To build the application for distribution, refer to the official Tauri distribution guide:
+
+🔗 [Tauri Distribution Guide](https://v2.tauri.app/distribute/)
+
+### Create Bundle
+
+To build the application as a bundle, run:
+
+```bash
+npm run tauri build
+```
+
+This command will create distributable bundles for your target platform.
+
+## Resources
+
+- [Tauri v2 Documentation](https://v2.tauri.app/)
+- [Getting Started Guide](https://v2.tauri.app/start)
+- [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites)
+- [Distribution Guide](https://v2.tauri.app/distribute/)
+
+## Features
+
+- 🔒 Secure credential storage
+- 🔐 Encrypted data protection
+- 🤝 Secure sharing capabilities
+- 💻 Cross-platform desktop application
+- 🚀 Built with Tauri for performance and security

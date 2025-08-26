@@ -228,9 +228,6 @@ onMounted(async () => {
   }
 });
 
-const closeDialog = () => {
-  emit('close');
-  show.value = false;
-};
+
 </script>
 <!-- </script> -->
