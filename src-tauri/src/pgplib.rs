@@ -13,10 +13,10 @@ use crate::libutils::LibError;
 #[tauri::command]
 pub fn generate_keypair(
     app_handle: tauri::AppHandle,
-    userId: &str,
+    user_id: &str,
     passphrase: &str,
 ) -> Result<(), LibError> {
-    println!("Generating keypair for user: {}", userId);
+    println!("Generating keypair for user: {}", user_id);
     println!("Passphrase: {}", passphrase);
 
     let app_data_path = app_handle
@@ -31,7 +31,7 @@ pub fn generate_keypair(
     // Generate secret key parameters
     let secret_key_params = SecretKeyParamsBuilder::default()
         .key_type(KeyType::Rsa(2048))
-        .primary_user_id(userId.to_string())
+        .primary_user_id(user_id.to_string())
         .passphrase(Some(passphrase.to_string()))
         .build()?;
 
