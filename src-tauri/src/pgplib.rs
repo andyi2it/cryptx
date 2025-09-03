@@ -81,6 +81,7 @@ pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result
     
     // Read the public key from the specified file
     let public_key_str = std::fs::read_to_string(public_key_path)?;
+    println!("Public Key: {}", public_key_str);
     let public_key = SignedPublicKey::from_string(&public_key_str)?.0;
 
     //Convert PkesBytes to Vec<u8>
@@ -98,8 +99,10 @@ pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result
         )
         .unwrap();
 
-    let encrypted_message = encrypted_msg.to_armored_string(None.into()).unwrap();
+    println!("✓ Encryption successful");
 
+    let encrypted_message = encrypted_msg.to_armored_string(None.into()).unwrap();
+    println!("Encrypted Message: {}", encrypted_message);
     Ok(encrypted_message)
 }
 
@@ -110,25 +113,77 @@ pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passp
         .app_data_dir()
         .unwrap();
 
+    println!("Come to decrypt....");
+    println!("Encrypted Text: {}", encrypted_text);
+
     let private_key_path = app_data_path.join("private_key.asc");
+    println!("Private Key path (before creation): {}", private_key_path.display());
     let private_key_str = std::fs::read_to_string(private_key_path)?;
+    println!("Private Key: {}", private_key_str);
     let private_key = SignedSecretKey::from_string(&private_key_str)?.0;
+    println!("Private Key loaded successfully.");
+
+    // Gracefully handle error when parsing armored message
+    let message_result = Message::from_armor_single(encrypted_text.as_bytes());
+    let message = match message_result {
+        Ok((msg, _)) => msg,
+        Err(e) => {
+            println!("Error parsing armored message: {:?}", e);
+            return Err(LibError::Custom(format!("Failed to parse encrypted message: {:?}", e)));
+        }
+    };
+
+    println!("Encrypted text: {}", encrypted_text);
+    println!("Decrypting message with passphrase: {}", passphrase);
 
     // Decrypt the message with the private key
-    let message = Message::from_armor_single(encrypted_text.as_bytes()).unwrap().0;
-    println!("Encrypted text: {}", encrypted_text);
-    // let passphrase = "alphagamma";
-    println!("Decrypting message with passphrase: {}", passphrase);
-    let decrypted_message: (Message, Vec<pgp::types::KeyId>) = message
-        .decrypt(|| passphrase.to_string(), &[&private_key])
-        .unwrap();
-    
+    let decrypted_message: (Message, Vec<pgp::types::KeyId>) = match message.decrypt(|| passphrase.to_string(), &[&private_key]) {
+        Ok(dm) => dm,
+        Err(e) => {
+            println!("Error decrypting message: {:?}", e);
+            return Err(LibError::Custom(format!("Failed to decrypt message: {:?}", e)));
+        }
+    };
+
     println!("Message successfully decrypted.");
 
-    let decrypted_message = decrypted_message.0.decompress().unwrap();
-    let decrypted_message = decrypted_message.get_content().unwrap().unwrap();
+    let decompressed = match decrypted_message.0.decompress() {
+        Ok(d) => d,
+        Err(e) => {
+            println!("Error decompressing message: {:?}", e);
+            return Err(LibError::Custom(format!("Failed to decompress message: {:?}", e)));
+        }
+    };
 
-    Ok(String::from_utf8(decrypted_message).unwrap())
+    let content = match decompressed.get_content() {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            println!("No content found in decrypted message.");
+            return Err(LibError::Custom("No content found in decrypted message".to_string()));
+        }
+        Err(e) => {
+            println!("Error getting content: {:?}", e);
+            return Err(LibError::Custom(format!("Failed to get content: {:?}", e)));
+        }
+    };
+
+    Ok(String::from_utf8(content).unwrap_or_else(|e| {
+        println!("Error converting decrypted content to UTF-8: {:?}", e);
+        String::from("[Invalid UTF-8]")
+    }))
+}
+
+#[tauri::command]
+pub fn get_email_ids_from_public_key(pubkey: String) -> Result<String, String> {
+    let public_key = SignedPublicKey::from_string(&pubkey).unwrap().0;
+    let user_ids: Vec<String> = public_key
+        .details
+        .users
+        .iter()
+        .map(|uid| uid.id.clone().id().to_string())
+        .collect();
+    let found_user_id = user_ids[0].clone();
+    Ok(found_user_id)
 }
 
 #[cfg(test)]

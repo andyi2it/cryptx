@@ -7,7 +7,7 @@ mod libutils;
 use std::fs;
 use std::path::Path;
 use tauri::Manager;
-use pgplib::{decrypt_message, encrypt_message, generate_keypair};
+use pgplib::{decrypt_message, encrypt_message, generate_keypair, get_email_ids_from_public_key};
 
 #[tauri::command]
 fn get_app_data_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
@@ -68,15 +68,10 @@ pub fn run() {
             join_path,
             generate_keypair,
             encrypt_message,
-            decrypt_message
+            decrypt_message,
+            get_email_ids_from_public_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-    //         write_text_file,
-    //         file_exists,
-    //         join_path
-    //     ])
-    //     .run(tauri::generate_context!())
-    //     .expect("error while running tauri application");
 

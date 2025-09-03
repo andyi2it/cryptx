@@ -12,6 +12,9 @@ pub enum LibError {
 
     #[error("Key Pair Error: {0}")]
     KeyPairError(#[from] SecretKeyParamsBuilderError),
+
+    #[error("{0}")]
+    Custom(String),
 }
 
 impl Serialize for LibError {

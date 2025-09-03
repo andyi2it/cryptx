@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { addUser, getUsers, initDatabase, deleteUser as dbDeleteUser } from '../lib/database';
+import { invoke } from '@tauri-apps/api/core';
 
 const search = ref('');
 const users = ref<Array<{ id: number; name: string; email: string; public_key: string }>>([]);
@@ -17,7 +18,6 @@ const valid = ref(false);
 const form = ref();
 const newUser = ref({
   name: '',
-  email: '',
   publicKey: ''
 });
 
@@ -32,6 +32,10 @@ const userToDelete = ref<{ id: number; name: string; email: string; public_key: 
 const loadUsers = async () => {
   try {
     users.value = await getUsers();
+    // loop users.value and print
+    users.value.forEach(user => {
+      console.log(`User: ${user.name}, Email: ${user.email}`, user.public_key);
+    });
   } catch (error) {
     console.error('Failed to load users:', error);
   }
@@ -43,7 +47,7 @@ const openAddUserDialog = () => {
 
 const closeAddUserDialog = () => {
   addUserDialog.value = false;
-  newUser.value = { name: '', email: '', publicKey: '' };
+  newUser.value = { name: '', publicKey: '' };
   if (form.value) {
     form.value.reset();
   }
@@ -52,7 +56,10 @@ const closeAddUserDialog = () => {
 const saveUser = async () => {
   if (valid.value) {
     try {
-      await addUser(newUser.value.name, newUser.value.email, newUser.value.publicKey);
+      // Extract email from public key using backend
+      const extracted_email_id: string = await invoke('get_email_ids_from_public_key', { pubkey: newUser.value.publicKey });
+      console.debug('Extracted Email ID:', extracted_email_id);
+      await addUser(newUser.value.name, extracted_email_id, newUser.value.publicKey);
       await loadUsers(); // Refresh the list
       closeAddUserDialog();
     } catch (error) {
@@ -191,14 +198,6 @@ onMounted(async () => {
               v-model="newUser.name"
               label="User Name"
               :rules="[v => !!v || 'User name is required']"
-              required
-              variant="outlined"
-              class="mb-3"
-            />
-            <v-text-field
-              v-model="newUser.email"
-              label="Email"
-              :rules="[v => !!v || 'Email is required', v => /.+@.+\..+/.test(v) || 'Email must be valid']"
               required
               variant="outlined"
               class="mb-3"
