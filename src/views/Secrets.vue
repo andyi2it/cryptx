@@ -62,6 +62,21 @@ const passwordForm = ref();
 const isValidatingPassword = ref(false);
 const passwordErrorMessage = ref('');
 
+// Encrypted message dialog state
+const encryptedMessageDialog = ref(false);
+const encryptedMessage = ref('');
+const isEncrypting = ref(false);
+const encryptError = ref('');
+const copySuccess = ref(false);
+
+const isValidPGPMessage = (value: string) => {
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith('-----BEGIN PGP MESSAGE-----') &&
+    trimmed.endsWith('-----END PGP MESSAGE-----')
+  ) || 'Invalid PGP message format';
+};
+
 const saveSecret = async () => {
   console.log("Save secret called, form valid:", valid.value);
   console.log("New secret data:", newSecret.value);
@@ -79,17 +94,26 @@ const saveSecret = async () => {
   }
   
   try {
-    console.log("Attempting to encrypt and save secret:", newSecret.value.name);
-    
-    // Encrypt the secret value before storing in database
-    const encryptedKey = await invoke('encrypt_message', {
-      plainText: newSecret.value.key
-    });
-    
-    console.log("Secret encrypted successfully");
-    
+    console.log("Attempting to save secret:", newSecret.value.name);
+
+    let encryptedKey: string;
+    if (isCreateMode.value) {
+      // Encrypt the secret value before storing in database (create mode)
+      console.log("Encrypting secret...");
+      console.log("key:", newSecret.value.key);
+      encryptedKey = await invoke('encrypt_message', {
+        plainText: newSecret.value.key
+      }) as string;
+      console.log("Secret encrypted successfully");
+    } else {
+      // Import mode: secret is already encrypted
+      encryptedKey = newSecret.value.key;
+      console.log("Imported secret, skipping encryption");
+    }
+
+    console.log("Encrypted key:", encryptedKey);
     // Save the secret with encrypted value
-    await addSecret(newSecret.value.name, encryptedKey as string);
+    await addSecret(newSecret.value.name, encryptedKey);
     console.log("Secret saved successfully");
     await loadSecrets();
     closeImportDialog();
@@ -105,7 +129,12 @@ const loadSecrets = async () => {
     console.log("Loading secrets from database...");
     const loadedSecrets = await getSecrets();
     console.log("Loaded secrets:", loadedSecrets);
-    
+    // loop loaded secrets and print key
+    loadedSecrets.forEach(secret => {
+      console.log("Secret name:", secret.name);
+      console.log("Secret key:", secret.key);
+    });
+
     // Add mock data for shared status
     secrets.value = loadedSecrets.map(secret => ({
       ...secret,
@@ -165,42 +194,74 @@ const closeShareDialog = () => {
   selectedUserForShare.value = null;
 };
 
-const shareSecret = () => {
-  if (selectedSecretForShare.value) {
-    // Update the secret with new sharing info
-    const secretIndex = secrets.value.findIndex(s => s.id === selectedSecretForShare.value.id);
-    if (secretIndex !== -1) {
-      secrets.value[secretIndex].shared_with = selectedUserForShare.value ? [selectedUserForShare.value] : [];
-      secrets.value[secretIndex].is_shared = selectedUserForShare.value !== null;
-      secrets.value[secretIndex].updated_at = new Date().toISOString();
-    }
-    console.log(`Sharing "${selectedSecretForShare.value.name}" to user:`, selectedUserForShare.value);
-    closeShareDialog();
+const shareSecret = async () => {
+  console.log("Share secret called");
+  if (selectedSecretForShare.value && selectedUserForShare.value) {
+    console.log("Selected secret:", selectedSecretForShare.value);
+    console.log("Selected user:", selectedUserForShare.value);
+    passwordPromptDialog.value = true;
+    encryptError.value = '';
+    return;
   }
 };
 
-const confirmDeleteSecret = (secret: { id: number; name: string; key: string }) => {
-  secretToDelete.value = secret;
-  confirmDeleteDialog.value = true;
-};
-
-const deleteSecret = async () => {
-  if (secretToDelete.value) {
+const proceedShareAfterUnlock = async () => {
+  if (
+    selectedSecretForShare.value &&
+    selectedUserForShare.value &&
+    masterPassword.value &&
+    passwordPromptValid.value
+  ) {
+    isEncrypting.value = true;
+    encryptError.value = '';
+    encryptedMessage.value = '';
     try {
-      await dbDeleteSecret(secretToDelete.value.id);
-      await loadSecrets();
-      confirmDeleteDialog.value = false;
-      secretToDelete.value = null;
+      // Decrypt the secret using the master password
+      const decryptedSecret = await invoke('decrypt_message', {
+        encryptedText: selectedSecretForShare.value.key.trim(), // <-- trim whitespace
+        passphrase: masterPassword.value
+      }) as string;
+
+      // Find the selected user's public key
+      const user = users.value.find(u => u.id === selectedUserForShare.value);
+      if (!user) {
+        encryptError.value = 'User not found';
+        isEncrypting.value = false;
+        passwordPromptDialog.value = false;
+        return;
+      }
+
+      // Encrypt with user's public key
+      console.log("Encrypting secret for user:", user.name);
+      console.log("Decrypted secret:", decryptedSecret);
+      console.log("User's public key:", user.public_key);
+
+      const encrypted = await invoke('encrypt_message', {
+        plainText: decryptedSecret,
+        publicKey: user.public_key
+      }) as string;
+
+      encryptedMessage.value = encrypted;
+      shareDialog.value = false;
+      encryptedMessageDialog.value = true;
+      passwordPromptDialog.value = false;
+      masterPassword.value = '';
+      passwordErrorMessage.value = '';
     } catch (error) {
-      console.error('Failed to delete secret:', error);
-      alert('Failed to delete secret: ' + error);
+      encryptError.value = 'Failed to decrypt/encrypt secret for sharing: ' + (error instanceof Error ? error.message : String(error));
+      passwordPromptDialog.value = false;
+      masterPassword.value = '';
+      passwordErrorMessage.value = '';
+    } finally {
+      isEncrypting.value = false;
     }
   }
 };
 
-const cancelDelete = () => {
-  confirmDeleteDialog.value = false;
-  secretToDelete.value = null;
+const closeEncryptedMessageDialog = () => {
+  encryptedMessageDialog.value = false;
+  encryptedMessage.value = '';
+  encryptError.value = '';
 };
 
 const toggleSecretVisibility = async () => {
@@ -222,52 +283,40 @@ const validateMasterPassword = async () => {
   try {
     isValidatingPassword.value = true;
     passwordErrorMessage.value = '';
-    
-    // Get app data directory
-    const appDataDir = await invoke('get_app_data_dir') as string;
-    const credentialsPath = await invoke('join_path', {
-      base: appDataDir,
-      segment: 'login_credentials.json'
-    }) as string;
 
-    // Check if credentials file exists
-    const fileExists = await invoke('file_exists', { path: credentialsPath }) as boolean;
-    if (!fileExists) {
-      passwordErrorMessage.value = 'Master password not set. Please set up your master password first.';
-      return;
-    }
-
-    // Read credentials file
-    const credentialsContent = await invoke('read_text_file', { path: credentialsPath }) as string;
-    const credentials = JSON.parse(credentialsContent);
-
-    // Validate password hash
-    const isValidPassword = await validatePasswordHash(masterPassword.value, credentials.passwordHash);
-    console.log("masterPassword.value:", masterPassword.value)
-    if (isValidPassword && selectedSecretDetails.value) {
+    // Directly try to decrypt with the entered password
+    if (selectedSecretDetails.value) {
       try {
-        // Decrypt the secret using the master password as passphrase
         const decryptedSecret = await invoke('decrypt_message', {
-          encryptedText: selectedSecretDetails.value.key,
+          encryptedText: selectedSecretDetails.value.key.trim(),
           passphrase: masterPassword.value
         }) as string;
-        
-        // Update the editable secret with decrypted value
+
         editableSecret.value.key = decryptedSecret;
         showSecretKey.value = true;
         passwordPromptDialog.value = false;
         masterPassword.value = '';
         passwordErrorMessage.value = '';
       } catch (decryptError) {
+        // Treat any error as invalid password or corrupted secret
         console.error('Decryption failed:', decryptError);
-        passwordErrorMessage.value = 'Failed to decrypt secret. The master password may be incorrect or the secret data is corrupted.';
+        try {
+          await invoke('log_error', { message: `Decryption failed: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}` });
+        } catch (backendLogError) {
+          console.error('Failed to log error in backend:', backendLogError);
+        }
+        passwordErrorMessage.value = 'Invalid master password. Please try again.';
       }
-    } else {
-      passwordErrorMessage.value = 'Invalid master password. Please try again.';
     }
   } catch (error) {
+    // Treat any error as invalid password
     console.error('Failed to validate password:', error);
-    passwordErrorMessage.value = 'An error occurred while validating the password. Please try again.';
+    try {
+      await invoke('log_error', { message: `Password validation error: ${error instanceof Error ? error.message : String(error)}` });
+    } catch (backendLogError) {
+      console.error('Failed to log error in backend:', backendLogError);
+    }
+    passwordErrorMessage.value = 'Invalid master password or corrupted secret. Please try again.';
   } finally {
     isValidatingPassword.value = false;
   }
@@ -300,9 +349,10 @@ const cancelPasswordPrompt = () => {
 
 const openSecretDetails = (secret: { id: number; name: string; key: string; created_at: string; updated_at: string }) => {
   selectedSecretDetails.value = secret;
-  editableSecret.value = { name: secret.name, key: secret.key }; // Keep encrypted value initially
+  // Always reset editableSecret to encrypted value when opening details
+  editableSecret.value = { name: secret.name, key: secret.key };
   isEditingSecret.value = false;
-  showSecretKey.value = false; // Always start with hidden secret
+  showSecretKey.value = false;
   secretDetailsDialog.value = true;
 };
 
@@ -380,9 +430,9 @@ const secretNameRules = [
   }
 ];
 
-const masterPasswordRules = [
-  (v: string) => !!v || 'Master password is required',
-  (v: string) => v.length >= 1 || 'Password cannot be empty'
+const encryptedSecretRules = [
+  (v: string) => !!v || 'Encrypted secret value is required',
+  isValidPGPMessage
 ];
 
 onMounted(async () => {
@@ -399,6 +449,50 @@ onMounted(async () => {
     console.warn("App initialization had issues, but continuing...");
   }
 });
+
+const confirmDeleteSecret = (secret: { id: number; name: string; key: string }) => {
+  secretToDelete.value = secret;
+  confirmDeleteDialog.value = true;
+};
+
+const deleteSecret = async () => {
+  if (secretToDelete.value) {
+    try {
+      await dbDeleteSecret(secretToDelete.value.id);
+      await loadSecrets();
+    } catch (error) {
+      console.error('Failed to delete secret:', error);
+      alert('Failed to delete secret: ' + error);
+    } finally {
+      confirmDeleteDialog.value = false;
+      secretToDelete.value = null;
+    }
+  }
+};
+
+// Password dialog "Verify" button logic
+// Only call proceedShareAfterUnlock if sharing, otherwise call validateMasterPassword for reveal
+const handlePasswordDialogVerify = async () => {
+  if (shareDialog.value) {
+    await proceedShareAfterUnlock();
+  } else {
+    await validateMasterPassword();
+  }
+};
+
+const copyEncryptedMessage = async () => {
+  try {
+    // Use the raw encryptedMessage value, which includes newlines
+    await navigator.clipboard.writeText(encryptedMessage.value);
+    copySuccess.value = true;
+    setTimeout(() => {
+      copySuccess.value = false;
+    }, 1500);
+  } catch (err) {
+    copySuccess.value = false;
+    alert('Failed to copy message');
+  }
+};
 </script>
 
 <template>
@@ -531,14 +625,28 @@ onMounted(async () => {
               variant="outlined"
               class="mb-3"
             />
-            <v-text-field
-              v-model="newSecret.key"
-              :label="isCreateMode ? 'Secret Value' : 'Encrypted secret value'"
-              type="password"
-              :rules="[v => !!v || 'Secret Value is required']"
-              required
-              variant="outlined"
-            />
+            <template v-if="isCreateMode">
+              <v-text-field
+                v-model="newSecret.key"
+                label="Secret Value"
+                type="password"
+                :rules="[v => !!v || 'Secret Value is required']"
+                required
+                variant="outlined"
+              />
+            </template>
+            <template v-else>
+              <v-textarea
+                v-model="newSecret.key"
+                label="Encrypted secret value"
+                :rules="encryptedSecretRules"
+                required
+                variant="outlined"
+                rows="8"
+                auto-grow
+                style="font-family: monospace; font-size: 12px;"
+              />
+            </template>
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -585,6 +693,7 @@ onMounted(async () => {
               />
             </v-radio-group>
           </div>
+          <v-alert v-if="encryptError" type="error" variant="tonal" class="mt-4">{{ encryptError }}</v-alert>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -592,6 +701,37 @@ onMounted(async () => {
           <v-btn color="primary" @click="shareSecret" :disabled="!selectedUserForShare">
             Share with {{ selectedUserForShare ? filteredUsersForShare.find(u => u.id === selectedUserForShare)?.name : 'user' }}
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Encrypted Message Dialog -->
+    <v-dialog v-model="encryptedMessageDialog" max-width="700px">
+      <v-card>
+        <v-card-title>
+          <span class="text-h5">Encrypted Message for Sharing</span>
+        </v-card-title>
+        <v-card-text>
+          <v-textarea
+            v-model="encryptedMessage"
+            label="Encrypted Message"
+            readonly
+            rows="8"
+            variant="outlined"
+            style="font-family: monospace; font-size: 12px;"
+          />
+          <div class="d-flex justify-end mt-2">
+            <v-btn color="primary" prepend-icon="mdi-content-copy" @click="copyEncryptedMessage">
+              Copy message
+            </v-btn>
+          </div>
+          <div v-if="copySuccess" class="text-success text-caption mt-2 text-end">
+            Copied!
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="closeEncryptedMessageDialog">Close</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -698,9 +838,9 @@ onMounted(async () => {
           Enter Master Password
         </v-card-title>
         <v-card-text>
-          <p class="mb-4">Please enter your master password to view the secret.</p>
-          
-          <!-- Error message display -->
+          <p class="mb-4">
+            {{ shareDialog ? 'Please enter your master password to share the secret.' : 'Please enter your master password to view the secret.' }}
+          </p>
           <v-alert
             v-if="passwordErrorMessage"
             type="error"
@@ -708,7 +848,6 @@ onMounted(async () => {
             class="mb-4"
             :text="passwordErrorMessage"
           />
-          
           <v-form ref="passwordForm" v-model="passwordPromptValid">
             <v-text-field
               v-model="masterPassword"
@@ -717,23 +856,23 @@ onMounted(async () => {
               :rules="masterPasswordRules"
               variant="outlined"
               autofocus
-              @keyup.enter="validateMasterPassword"
+              @keyup.enter="handlePasswordDialogVerify"
               @input="passwordErrorMessage = ''"
             />
           </v-form>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn @click="cancelPasswordPrompt" :disabled="isValidatingPassword">
+          <v-btn @click="cancelPasswordPrompt" :disabled="isEncrypting || isValidatingPassword">
             Cancel
           </v-btn>
           <v-btn 
             color="primary" 
-            @click="validateMasterPassword" 
-            :disabled="!passwordPromptValid || isValidatingPassword"
-            :loading="isValidatingPassword"
+            @click="handlePasswordDialogVerify" 
+            :disabled="!passwordPromptValid || isEncrypting || isValidatingPassword"
+            :loading="isEncrypting || isValidatingPassword"
           >
-            Verify
+            Verify{{ shareDialog ? ' & Share' : '' }}
           </v-btn>
         </v-card-actions>
       </v-card>

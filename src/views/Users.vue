@@ -32,6 +32,10 @@ const userToDelete = ref<{ id: number; name: string; email: string; public_key: 
 const loadUsers = async () => {
   try {
     users.value = await getUsers();
+    // loop users.value and print
+    users.value.forEach(user => {
+      console.log(`User: ${user.name}, Email: ${user.email}`, user.public_key);
+    });
   } catch (error) {
     console.error('Failed to load users:', error);
   }
