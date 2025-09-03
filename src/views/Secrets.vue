@@ -322,21 +322,21 @@ const validateMasterPassword = async () => {
   }
 };
 
-const validatePasswordHash = async (password: string, storedHash: string): Promise<boolean> => {
-  try {
-    // Use proper hash function from auth helper
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+// const validatePasswordHash = async (password: string, storedHash: string): Promise<boolean> => {
+//   try {
+//     // Use proper hash function from auth helper
+//     const encoder = new TextEncoder();
+//     const data = encoder.encode(password);
+//     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+//     const hashArray = Array.from(new Uint8Array(hashBuffer));
+//     const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     
-    return passwordHash === storedHash;
-  } catch (error) {
-    console.error('Password validation error:', error);
-    return false;
-  }
-};
+//     return passwordHash === storedHash;
+//   } catch (error) {
+//     console.error('Password validation error:', error);
+//     return false;
+//   }
+// };
 
 const cancelPasswordPrompt = () => {
   passwordPromptDialog.value = false;
@@ -435,6 +435,10 @@ const encryptedSecretRules = [
   isValidPGPMessage
 ];
 
+const masterPasswordRules = [
+  (v: string) => !!v || 'Master password is required'
+];
+
 onMounted(async () => {
   try {
     console.log("Component mounted, initializing...");
@@ -468,6 +472,11 @@ const deleteSecret = async () => {
       secretToDelete.value = null;
     }
   }
+};
+
+const cancelDelete = () => {
+  confirmDeleteDialog.value = false;
+  secretToDelete.value = null;
 };
 
 // Password dialog "Verify" button logic
