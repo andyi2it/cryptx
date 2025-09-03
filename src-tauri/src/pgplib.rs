@@ -131,6 +131,19 @@ pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passp
     Ok(String::from_utf8(decrypted_message).unwrap())
 }
 
+#[tauri::command]
+pub fn get_email_ids_from_public_key(pubkey: String) -> Result<String, String> {
+    let public_key = SignedPublicKey::from_string(&pubkey).unwrap().0;
+    let user_ids: Vec<String> = public_key
+        .details
+        .users
+        .iter()
+        .map(|uid| uid.id.clone().id().to_string())
+        .collect();
+    let found_user_id = user_ids[0].clone();
+    Ok(found_user_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
