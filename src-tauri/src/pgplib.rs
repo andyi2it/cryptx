@@ -9,6 +9,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::libutils::LibError;
+use crate::password_cache;
 
 #[tauri::command]
 pub fn generate_keypair(
@@ -107,7 +108,13 @@ pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result
 }
 
 #[tauri::command]
-pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passphrase: &str) -> Result<String, LibError> {
+pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passphrase: Option<String>) -> Result<String, LibError> {
+    // Try to get cached password if passphrase is None
+    let passphrase = match passphrase {
+        Some(p) => p,
+        None => password_cache::get().ok_or(LibError::Custom("Master password required".to_string()))?,
+    };
+
     let app_data_path = app_handle
         .path()
         .app_data_dir()

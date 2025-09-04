@@ -69,6 +69,25 @@ const isEncrypting = ref(false);
 const encryptError = ref('');
 const copySuccess = ref(false);
 
+// Helper to get cached master password from backend
+const getCachedMasterPassword = async (): Promise<string | null> => {
+  try {
+    const cached = await invoke<string | null>('get_cached_master_password');
+    return cached || null;
+  } catch {
+    return null;
+  }
+};
+
+// Helper to cache master password in backend
+const cacheMasterPassword = async (password: string) => {
+  try {
+    await invoke('cache_master_password', { password });
+  } catch {
+    // ignore
+  }
+};
+
 const isValidPGPMessage = (value: string) => {
   const trimmed = value.trim();
   return (
@@ -199,6 +218,48 @@ const shareSecret = async () => {
   if (selectedSecretForShare.value && selectedUserForShare.value) {
     console.log("Selected secret:", selectedSecretForShare.value);
     console.log("Selected user:", selectedUserForShare.value);
+
+    // Try to get cached password first
+    const cached = await getCachedMasterPassword();
+    if (cached) {
+      // Try to decrypt with cached password
+      try {
+        const decryptedSecret = await invoke('decrypt_message', {
+          encryptedText: selectedSecretForShare.value.key.trim(),
+          passphrase: cached
+        }) as string;
+
+        // Find the selected user's public key
+        const user = users.value.find(u => u.id === selectedUserForShare.value);
+        if (!user) {
+          encryptError.value = 'User not found';
+          return;
+        }
+
+        // Encrypt with user's public key
+        console.log("Encrypting secret for user:", user.name);
+        console.log("Decrypted secret:", decryptedSecret);
+        console.log("User's public key:", user.public_key);
+
+        const encrypted = await invoke('encrypt_message', {
+          plainText: decryptedSecret,
+          publicKey: user.public_key
+        }) as string;
+
+        encryptedMessage.value = encrypted;
+        shareDialog.value = false;
+        encryptedMessageDialog.value = true;
+        passwordPromptDialog.value = false;
+        masterPassword.value = '';
+        passwordErrorMessage.value = '';
+        return;
+      } catch (error) {
+        // If cached password fails, fallback to prompt
+        console.log("Cached password failed for sharing, fallback to prompt.");
+      }
+    }
+
+    // Show password prompt if no cached password or decryption failed
     passwordPromptDialog.value = true;
     encryptError.value = '';
     return;
@@ -221,6 +282,9 @@ const proceedShareAfterUnlock = async () => {
         encryptedText: selectedSecretForShare.value.key.trim(), // <-- trim whitespace
         passphrase: masterPassword.value
       }) as string;
+
+      // Cache the password for future use (fix: add this line)
+      await cacheMasterPassword(masterPassword.value);
 
       // Find the selected user's public key
       const user = users.value.find(u => u.id === selectedUserForShare.value);
@@ -266,7 +330,25 @@ const closeEncryptedMessageDialog = () => {
 
 const toggleSecretVisibility = async () => {
   if (!showSecretKey.value) {
-    // Show password prompt before revealing the secret
+    // Try to get cached password first
+    const cached = await getCachedMasterPassword();
+    if (cached) {
+      // Try to decrypt with cached password
+      if (selectedSecretDetails.value) {
+        try {
+          const decryptedSecret = await invoke('decrypt_message', {
+            encryptedText: selectedSecretDetails.value.key.trim(),
+            passphrase: cached
+          }) as string;
+          editableSecret.value.key = decryptedSecret;
+          showSecretKey.value = true;
+          return;
+        } catch (error) {
+          // If cached password fails, fallback to prompt
+        }
+      }
+    }
+    // Show password prompt if no cached password or decryption failed
     passwordPromptDialog.value = true;
     masterPassword.value = '';
   } else {
@@ -284,7 +366,6 @@ const validateMasterPassword = async () => {
     isValidatingPassword.value = true;
     passwordErrorMessage.value = '';
 
-    // Directly try to decrypt with the entered password
     if (selectedSecretDetails.value) {
       try {
         const decryptedSecret = await invoke('decrypt_message', {
@@ -295,27 +376,15 @@ const validateMasterPassword = async () => {
         editableSecret.value.key = decryptedSecret;
         showSecretKey.value = true;
         passwordPromptDialog.value = false;
-        masterPassword.value = '';
         passwordErrorMessage.value = '';
+        // Cache the password for future use
+        await cacheMasterPassword(masterPassword.value);
+        masterPassword.value = '';
       } catch (decryptError) {
-        // Treat any error as invalid password or corrupted secret
-        console.error('Decryption failed:', decryptError);
-        try {
-          await invoke('log_error', { message: `Decryption failed: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}` });
-        } catch (backendLogError) {
-          console.error('Failed to log error in backend:', backendLogError);
-        }
         passwordErrorMessage.value = 'Invalid master password. Please try again.';
       }
     }
   } catch (error) {
-    // Treat any error as invalid password
-    console.error('Failed to validate password:', error);
-    try {
-      await invoke('log_error', { message: `Password validation error: ${error instanceof Error ? error.message : String(error)}` });
-    } catch (backendLogError) {
-      console.error('Failed to log error in backend:', backendLogError);
-    }
     passwordErrorMessage.value = 'Invalid master password or corrupted secret. Please try again.';
   } finally {
     isValidatingPassword.value = false;
