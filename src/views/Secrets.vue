@@ -638,7 +638,7 @@ const copyEncryptedMessage = async () => {
               <v-text-field
                 v-model="newSecret.key"
                 label="Secret Value"
-                type="password"
+                type="text"
                 :rules="[v => !!v || 'Secret Value is required']"
                 required
                 variant="outlined"
