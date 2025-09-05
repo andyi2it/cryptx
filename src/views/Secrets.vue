@@ -80,9 +80,6 @@ const isValidPGPMessage = (value: string) => {
 };
 
 const saveSecret = async () => {
-  console.log("Save secret called, form valid:", valid.value);
-  console.log("New secret data:", newSecret.value);
-  
   if (!valid.value) {
     console.error("Form validation failed");
     alert("Please fix the form errors before saving");
@@ -96,27 +93,15 @@ const saveSecret = async () => {
   }
   
   try {
-    console.log("Attempting to save secret:", newSecret.value.name);
-
     let encryptedKey: string;
     if (isCreateMode.value) {
-      // Encrypt the secret value before storing in database (create mode)
-      console.log("Encrypting secret...");
-      console.log("key:", newSecret.value.key);
       encryptedKey = await invoke('encrypt_message', {
         plainText: newSecret.value.key
       }) as string;
-      console.log("Secret encrypted successfully");
     } else {
-      // Import mode: secret is already encrypted
       encryptedKey = newSecret.value.key;
-      console.log("Imported secret, skipping encryption");
     }
-
-    console.log("Encrypted key:", encryptedKey);
-    // Save the secret with encrypted value
     await addSecret(newSecret.value.name, encryptedKey);
-    console.log("Secret saved successfully");
     await loadSecrets();
     closeImportDialog();
   } catch (error) {
@@ -128,23 +113,12 @@ const saveSecret = async () => {
 
 const loadSecrets = async () => {
   try {
-    console.log("Loading secrets from database...");
     const loadedSecrets = await getSecrets();
-    console.log("Loaded secrets:", loadedSecrets);
-    // loop loaded secrets and print key
-    loadedSecrets.forEach(secret => {
-      console.log("Secret name:", secret.name);
-      console.log("Secret key:", secret.key);
-    });
-
-    // Add mock data for shared status
     secrets.value = loadedSecrets.map(secret => ({
       ...secret,
       shared_with: Math.random() > 0.7 ? [1, 2] : [],
       is_shared: Math.random() > 0.7
     }));
-    
-    console.log("Secrets processed and set to reactive state");
   } catch (error) {
     console.error('Failed to load secrets:', error);
     // Don't show alert on initial load, just log the error
@@ -158,7 +132,6 @@ const loadUsers = async () => {
     users.value = await getUsers();
   } catch (error) {
     console.error('Failed to load users:', error);
-    // Don't show alert, just log and continue
     users.value = [];
   }
 };
@@ -431,17 +404,10 @@ const cancelEditingSecret = () => {
 const saveSecretChanges = async () => {
   if (selectedSecretDetails.value && editableSecret.value.name && editableSecret.value.key) {
     try {
-      console.log("Attempting to encrypt and update secret:", selectedSecretDetails.value.id);
-      
-      // Encrypt the secret value before updating in database
       const encryptedKey = await invoke('encrypt_message', {
         plainText: editableSecret.value.key
       });
-      
-      console.log("Secret encrypted successfully for update");
-      
       await updateSecret(selectedSecretDetails.value.id, editableSecret.value.name, encryptedKey as string);
-      console.log("Secret updated successfully");
       await loadSecrets();
       isEditingSecret.value = false;
       closeSecretDetails();
@@ -492,12 +458,9 @@ const masterPasswordRules = [
 
 onMounted(async () => {
   try {
-    console.log("Component mounted, initializing...");
     await initDatabase();
-    console.log("Database initialized successfully");
     await loadSecrets();
     await loadUsers();
-    console.log("Initial data loading completed");
   } catch (error) {
     console.error("Failed to initialize app:", error);
     // Show error but don't block the app

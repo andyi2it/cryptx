@@ -18,7 +18,7 @@ pub fn generate_keypair(
     passphrase: &str,
 ) -> Result<(), LibError> {
     println!("Generating keypair for user: {}", user_id);
-    println!("Passphrase: {}", passphrase);
+    // println!("Passphrase: {}", passphrase); // REMOVE sensitive println
 
     let app_data_path = app_handle
         .path()
@@ -79,10 +79,8 @@ pub fn encrypt_message(
     public_key: Option<String>
 ) -> Result<String, LibError> {
     let public_key = if let Some(pubkey_str) = public_key {
-        // Use the provided public key (for sharing)
         SignedPublicKey::from_string(&pubkey_str)?.0
     } else {
-        // Use the user's own public key (for vault encryption)
         let app_data_path = app_handle
             .path()
             .app_data_dir()
@@ -103,9 +101,7 @@ pub fn encrypt_message(
         .unwrap();
 
     println!("✓ Encryption successful");
-
     let encrypted_message = encrypted_msg.to_armored_string(None.into()).unwrap();
-    println!("Encrypted Message: {}", encrypted_message);
     Ok(encrypted_message)
 }
 
@@ -135,12 +131,12 @@ pub fn decrypt_message(
         .unwrap();
 
     println!("Come to decrypt....");
-    println!("Encrypted Text: {}", encrypted_text);
+    // println!("Encrypted Text: {}", encrypted_text); // REMOVE sensitive println
 
     let private_key_path = app_data_path.join("private_key.asc");
     println!("Private Key path (before creation): {}", private_key_path.display());
+    // println!("Private Key: {}", private_key_str); // REMOVE sensitive println
     let private_key_str = std::fs::read_to_string(private_key_path)?;
-    println!("Private Key: {}", private_key_str);
     let private_key = SignedSecretKey::from_string(&private_key_str)?.0;
     println!("Private Key loaded successfully.");
 
@@ -155,8 +151,8 @@ pub fn decrypt_message(
     };
 
     println!("Encrypted text: {}", encrypted_text);
-    println!("Decrypting message with passphrase: {}", passphrase);
-    println!("Private Key: {}", private_key_str);
+    println!("Decrypting message with passphrase: [REDACTED]");
+    // println!("Private Key: {}", private_key_str); // REMOVE sensitive println
 
     // Decrypt the message with the private key
     let decrypted_message: (Message, Vec<pgp::types::KeyId>) = match message.decrypt(|| passphrase.to_string(), &[&private_key]) {
