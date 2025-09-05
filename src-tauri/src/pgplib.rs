@@ -73,22 +73,24 @@ pub fn generate_keypair(
 }
 
 #[tauri::command]
-pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result<String, LibError> {
-    let app_data_path = app_handle
-        .path()
-        .app_data_dir()
-        .unwrap();
-    let public_key_path = app_data_path.join("public_key.asc");
-    
-    // Read the public key from the specified file
-    let public_key_str = std::fs::read_to_string(public_key_path)?;
-    println!("Public Key: {}", public_key_str);
-    let public_key = SignedPublicKey::from_string(&public_key_str)?.0;
-
-    //Convert PkesBytes to Vec<u8>
-    //let message = Message::from_bytes(plain_text.as_bytes()).unwrap();
-    //let data = message.compress(CompressionAlgorithm::ZLIB).unwrap();
-    //let enc_data = data.encrypt_to_keys_seipdv1(thread_rng(), pgp::crypto::sym::SymmetricKeyAlgorithm::AES256, &[&public_key]).unwrap();
+pub fn encrypt_message(
+    app_handle: tauri::AppHandle,
+    plain_text: &str,
+    public_key: Option<String>
+) -> Result<String, LibError> {
+    let public_key = if let Some(pubkey_str) = public_key {
+        // Use the provided public key (for sharing)
+        SignedPublicKey::from_string(&pubkey_str)?.0
+    } else {
+        // Use the user's own public key (for vault encryption)
+        let app_data_path = app_handle
+            .path()
+            .app_data_dir()
+            .unwrap();
+        let public_key_path = app_data_path.join("public_key.asc");
+        let public_key_str = std::fs::read_to_string(public_key_path)?;
+        SignedPublicKey::from_string(&public_key_str)?.0
+    };
 
     let message = Message::new_literal_bytes("", plain_text.as_bytes());
     let compressed_msg = message.compress(CompressionAlgorithm::ZLIB).unwrap();
