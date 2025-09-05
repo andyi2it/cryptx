@@ -60,7 +60,7 @@ fn join_path(base: String, segment: String) -> String {
 mod password_cache {
     use super::*;
     static CACHE: Lazy<Mutex<Option<(String, SystemTime)>>> = Lazy::new(|| Mutex::new(None));
-    const CACHE_DURATION: Duration = Duration::from_secs(15 * 60); // Changed from 15 to 2 minutes
+    const CACHE_DURATION: Duration = Duration::from_secs(1 * 60); // Changed from 15 to 2 minutes
 
     pub fn set(password: String) {
         let mut cache = CACHE.lock().unwrap();
@@ -91,8 +91,8 @@ fn cache_master_password(password: String) {
 }
 
 #[tauri::command]
-fn get_cached_master_password() -> Option<String> {
-    password_cache::get()
+fn is_cache_valid() -> bool {
+    password_cache::get().is_some()
 }
 
 #[tauri::command]
@@ -117,8 +117,8 @@ pub fn run() {
             decrypt_message,
             get_email_ids_from_public_key,
             cache_master_password,
-            get_cached_master_password,
             clear_master_password_cache,
+            is_cache_valid,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

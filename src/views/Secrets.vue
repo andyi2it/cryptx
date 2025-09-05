@@ -69,24 +69,7 @@ const isEncrypting = ref(false);
 const encryptError = ref('');
 const copySuccess = ref(false);
 
-// Helper to get cached master password from backend
-const getCachedMasterPassword = async (): Promise<string | null> => {
-  try {
-    const cached = await invoke<string | null>('get_cached_master_password');
-    return cached || null;
-  } catch {
-    return null;
-  }
-};
-
-// Helper to cache master password in backend
-const cacheMasterPassword = async (password: string) => {
-  try {
-    await invoke('cache_master_password', { password });
-  } catch {
-    // ignore
-  }
-};
+// Removed getCachedMasterPassword and cacheMasterPassword helpers
 
 const isValidPGPMessage = (value: string) => {
   const trimmed = value.trim();
@@ -219,14 +202,14 @@ const shareSecret = async () => {
     console.log("Selected secret:", selectedSecretForShare.value);
     console.log("Selected user:", selectedUserForShare.value);
 
-    // Try to get cached password first
-    const cached = await getCachedMasterPassword();
-    if (cached) {
-      // Try to decrypt with cached password
+    // Check if master password is cached in backend
+    const cacheValid = await invoke<boolean>('is_cache_valid');
+    if (cacheValid) {
       try {
+        // Use cached password by passing null
         const decryptedSecret = await invoke('decrypt_message', {
           encryptedText: selectedSecretForShare.value.key.trim(),
-          passphrase: cached
+          passphrase: null
         }) as string;
 
         // Find the selected user's public key
@@ -262,6 +245,7 @@ const shareSecret = async () => {
     // Show password prompt if no cached password or decryption failed
     passwordPromptDialog.value = true;
     encryptError.value = '';
+    masterPassword.value = '';
     return;
   }
 };
@@ -279,27 +263,23 @@ const proceedShareAfterUnlock = async () => {
     try {
       // Decrypt the secret using the master password
       const decryptedSecret = await invoke('decrypt_message', {
-        encryptedText: selectedSecretForShare.value.key.trim(), // <-- trim whitespace
+        encryptedText: selectedSecretForShare.value.key.trim(),
         passphrase: masterPassword.value
       }) as string;
-
-      // Cache the password for future use (fix: add this line)
-      await cacheMasterPassword(masterPassword.value);
 
       // Find the selected user's public key
       const user = users.value.find(u => u.id === selectedUserForShare.value);
       if (!user) {
         encryptError.value = 'User not found';
         isEncrypting.value = false;
+        // Only close password dialog if it was open
         passwordPromptDialog.value = false;
+        masterPassword.value = '';
+        passwordErrorMessage.value = '';
         return;
       }
 
       // Encrypt with user's public key
-      console.log("Encrypting secret for user:", user.name);
-      console.log("Decrypted secret:", decryptedSecret);
-      console.log("User's public key:", user.public_key);
-
       const encrypted = await invoke('encrypt_message', {
         plainText: decryptedSecret,
         publicKey: user.public_key
@@ -312,10 +292,13 @@ const proceedShareAfterUnlock = async () => {
       masterPassword.value = '';
       passwordErrorMessage.value = '';
     } catch (error) {
-      encryptError.value = 'Failed to decrypt/encrypt secret for sharing: ' + (error instanceof Error ? error.message : String(error));
-      passwordPromptDialog.value = false;
+      // Show error in password dialog and keep it open
+      passwordErrorMessage.value = 'Invalid master password. Please try again.';
+      // Do NOT close passwordPromptDialog here
       masterPassword.value = '';
-      passwordErrorMessage.value = '';
+      // Optionally, clear encryptError so it doesn't show in the share dialog
+      encryptError.value = '';
+      return;
     } finally {
       isEncrypting.value = false;
     }
@@ -330,15 +313,15 @@ const closeEncryptedMessageDialog = () => {
 
 const toggleSecretVisibility = async () => {
   if (!showSecretKey.value) {
-    // Try to get cached password first
-    const cached = await getCachedMasterPassword();
-    if (cached) {
-      // Try to decrypt with cached password
+    // Check if master password is cached in backend
+    const cacheValid = await invoke<boolean>('is_cache_valid');
+    if (cacheValid) {
       if (selectedSecretDetails.value) {
         try {
+          // Use cached password by passing null
           const decryptedSecret = await invoke('decrypt_message', {
             encryptedText: selectedSecretDetails.value.key.trim(),
-            passphrase: cached
+            passphrase: null
           }) as string;
           editableSecret.value.key = decryptedSecret;
           showSecretKey.value = true;
@@ -377,8 +360,7 @@ const validateMasterPassword = async () => {
         showSecretKey.value = true;
         passwordPromptDialog.value = false;
         passwordErrorMessage.value = '';
-        // Cache the password for future use
-        await cacheMasterPassword(masterPassword.value);
+        // No need to cache the password here, Rust will handle it
         masterPassword.value = '';
       } catch (decryptError) {
         passwordErrorMessage.value = 'Invalid master password. Please try again.';

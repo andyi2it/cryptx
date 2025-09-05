@@ -107,11 +107,23 @@ pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result
     Ok(encrypted_message)
 }
 
+// #[tauri::command]
+// pub fn is_cache_valid() -> bool {
+//     password_cache::get().is_some()
+// }
+
 #[tauri::command]
-pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passphrase: Option<String>) -> Result<String, LibError> {
-    // Try to get cached password if passphrase is None
+pub fn decrypt_message(
+    app_handle: tauri::AppHandle,
+    encrypted_text: &str,
+    passphrase: Option<String>
+) -> Result<String, LibError> {
+    // If passphrase is provided, cache it; otherwise, use cached password
     let passphrase = match passphrase {
-        Some(p) => p,
+        Some(ref p) => {
+            password_cache::set(p.clone());
+            p.clone()
+        },
         None => password_cache::get().ok_or(LibError::Custom("Master password required".to_string()))?,
     };
 
@@ -142,6 +154,7 @@ pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passp
 
     println!("Encrypted text: {}", encrypted_text);
     println!("Decrypting message with passphrase: {}", passphrase);
+    println!("Private Key: {}", private_key_str);
 
     // Decrypt the message with the private key
     let decrypted_message: (Message, Vec<pgp::types::KeyId>) = match message.decrypt(|| passphrase.to_string(), &[&private_key]) {
