@@ -8,6 +8,9 @@ use std::fs;
 use std::path::Path;
 use tauri::Manager;
 use pgplib::{decrypt_message, encrypt_message, generate_keypair, get_email_ids_from_public_key};
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use std::time::{SystemTime, Duration};
 
 #[tauri::command]
 fn get_app_data_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
@@ -54,6 +57,49 @@ fn join_path(base: String, segment: String) -> String {
     Path::new(&base).join(segment).to_string_lossy().to_string()
 }
 
+mod password_cache {
+    use super::*;
+    static CACHE: Lazy<Mutex<Option<(String, SystemTime)>>> = Lazy::new(|| Mutex::new(None));
+    const CACHE_DURATION: Duration = Duration::from_secs(15 * 60); // Changed from 15 to 2 minutes
+
+    pub fn set(password: String) {
+        let mut cache = CACHE.lock().unwrap();
+        *cache = Some((password, SystemTime::now()));
+    }
+
+    pub fn get() -> Option<String> {
+        let mut cache = CACHE.lock().unwrap();
+        if let Some((ref password, timestamp)) = *cache {
+            if SystemTime::now().duration_since(timestamp).unwrap_or(Duration::ZERO) < CACHE_DURATION {
+                return Some(password.clone());
+            } else {
+                *cache = None;
+            }
+        }
+        None
+    }
+
+    pub fn clear() {
+        let mut cache = CACHE.lock().unwrap();
+        *cache = None;
+    }
+}
+
+#[tauri::command]
+fn cache_master_password(password: String) {
+    password_cache::set(password);
+}
+
+#[tauri::command]
+fn is_cache_valid() -> bool {
+    password_cache::get().is_some()
+}
+
+#[tauri::command]
+fn clear_master_password_cache() {
+    password_cache::clear();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -69,7 +115,10 @@ pub fn run() {
             generate_keypair,
             encrypt_message,
             decrypt_message,
-            get_email_ids_from_public_key
+            get_email_ids_from_public_key,
+            cache_master_password,
+            clear_master_password_cache,
+            is_cache_valid,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

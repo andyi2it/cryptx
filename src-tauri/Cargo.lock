@@ -720,6 +720,7 @@ dependencies = [
 name = "cryptx"
 version = "0.1.0"
 dependencies = [
+ "once_cell",
  "pgp",
  "rand 0.8.5",
  "serde",

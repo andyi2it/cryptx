@@ -9,6 +9,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::libutils::LibError;
+use crate::password_cache;
 
 #[tauri::command]
 pub fn generate_keypair(
@@ -17,7 +18,7 @@ pub fn generate_keypair(
     passphrase: &str,
 ) -> Result<(), LibError> {
     println!("Generating keypair for user: {}", user_id);
-    println!("Passphrase: {}", passphrase);
+    // println!("Passphrase: {}", passphrase); // REMOVE sensitive println
 
     let app_data_path = app_handle
         .path()
@@ -72,22 +73,22 @@ pub fn generate_keypair(
 }
 
 #[tauri::command]
-pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result<String, LibError> {
-    let app_data_path = app_handle
-        .path()
-        .app_data_dir()
-        .unwrap();
-    let public_key_path = app_data_path.join("public_key.asc");
-    
-    // Read the public key from the specified file
-    let public_key_str = std::fs::read_to_string(public_key_path)?;
-    println!("Public Key: {}", public_key_str);
-    let public_key = SignedPublicKey::from_string(&public_key_str)?.0;
-
-    //Convert PkesBytes to Vec<u8>
-    //let message = Message::from_bytes(plain_text.as_bytes()).unwrap();
-    //let data = message.compress(CompressionAlgorithm::ZLIB).unwrap();
-    //let enc_data = data.encrypt_to_keys_seipdv1(thread_rng(), pgp::crypto::sym::SymmetricKeyAlgorithm::AES256, &[&public_key]).unwrap();
+pub fn encrypt_message(
+    app_handle: tauri::AppHandle,
+    plain_text: &str,
+    public_key: Option<String>
+) -> Result<String, LibError> {
+    let public_key = if let Some(pubkey_str) = public_key {
+        SignedPublicKey::from_string(&pubkey_str)?.0
+    } else {
+        let app_data_path = app_handle
+            .path()
+            .app_data_dir()
+            .unwrap();
+        let public_key_path = app_data_path.join("public_key.asc");
+        let public_key_str = std::fs::read_to_string(public_key_path)?;
+        SignedPublicKey::from_string(&public_key_str)?.0
+    };
 
     let message = Message::new_literal_bytes("", plain_text.as_bytes());
     let compressed_msg = message.compress(CompressionAlgorithm::ZLIB).unwrap();
@@ -100,26 +101,42 @@ pub fn encrypt_message(app_handle: tauri::AppHandle, plain_text: &str) -> Result
         .unwrap();
 
     println!("✓ Encryption successful");
-
     let encrypted_message = encrypted_msg.to_armored_string(None.into()).unwrap();
-    println!("Encrypted Message: {}", encrypted_message);
     Ok(encrypted_message)
 }
 
+// #[tauri::command]
+// pub fn is_cache_valid() -> bool {
+//     password_cache::get().is_some()
+// }
+
 #[tauri::command]
-pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passphrase: &str) -> Result<String, LibError> {
+pub fn decrypt_message(
+    app_handle: tauri::AppHandle,
+    encrypted_text: &str,
+    passphrase: Option<String>
+) -> Result<String, LibError> {
+    // If passphrase is provided, cache it; otherwise, use cached password
+    let passphrase = match passphrase {
+        Some(ref p) => {
+            password_cache::set(p.clone());
+            p.clone()
+        },
+        None => password_cache::get().ok_or(LibError::Custom("Master password required".to_string()))?,
+    };
+
     let app_data_path = app_handle
         .path()
         .app_data_dir()
         .unwrap();
 
     println!("Come to decrypt....");
-    println!("Encrypted Text: {}", encrypted_text);
+    // println!("Encrypted Text: {}", encrypted_text); // REMOVE sensitive println
 
     let private_key_path = app_data_path.join("private_key.asc");
     println!("Private Key path (before creation): {}", private_key_path.display());
+    // println!("Private Key: {}", private_key_str); // REMOVE sensitive println
     let private_key_str = std::fs::read_to_string(private_key_path)?;
-    println!("Private Key: {}", private_key_str);
     let private_key = SignedSecretKey::from_string(&private_key_str)?.0;
     println!("Private Key loaded successfully.");
 
@@ -134,7 +151,8 @@ pub fn decrypt_message(app_handle: tauri::AppHandle, encrypted_text: &str, passp
     };
 
     println!("Encrypted text: {}", encrypted_text);
-    println!("Decrypting message with passphrase: {}", passphrase);
+    println!("Decrypting message with passphrase: [REDACTED]");
+    // println!("Private Key: {}", private_key_str); // REMOVE sensitive println
 
     // Decrypt the message with the private key
     let decrypted_message: (Message, Vec<pgp::types::KeyId>) = match message.decrypt(|| passphrase.to_string(), &[&private_key]) {

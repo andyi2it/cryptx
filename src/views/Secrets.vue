@@ -69,6 +69,8 @@ const isEncrypting = ref(false);
 const encryptError = ref('');
 const copySuccess = ref(false);
 
+// Removed getCachedMasterPassword and cacheMasterPassword helpers
+
 const isValidPGPMessage = (value: string) => {
   const trimmed = value.trim();
   return (
@@ -78,9 +80,6 @@ const isValidPGPMessage = (value: string) => {
 };
 
 const saveSecret = async () => {
-  console.log("Save secret called, form valid:", valid.value);
-  console.log("New secret data:", newSecret.value);
-  
   if (!valid.value) {
     console.error("Form validation failed");
     alert("Please fix the form errors before saving");
@@ -94,27 +93,15 @@ const saveSecret = async () => {
   }
   
   try {
-    console.log("Attempting to save secret:", newSecret.value.name);
-
     let encryptedKey: string;
     if (isCreateMode.value) {
-      // Encrypt the secret value before storing in database (create mode)
-      console.log("Encrypting secret...");
-      console.log("key:", newSecret.value.key);
       encryptedKey = await invoke('encrypt_message', {
         plainText: newSecret.value.key
       }) as string;
-      console.log("Secret encrypted successfully");
     } else {
-      // Import mode: secret is already encrypted
       encryptedKey = newSecret.value.key;
-      console.log("Imported secret, skipping encryption");
     }
-
-    console.log("Encrypted key:", encryptedKey);
-    // Save the secret with encrypted value
     await addSecret(newSecret.value.name, encryptedKey);
-    console.log("Secret saved successfully");
     await loadSecrets();
     closeImportDialog();
   } catch (error) {
@@ -126,23 +113,12 @@ const saveSecret = async () => {
 
 const loadSecrets = async () => {
   try {
-    console.log("Loading secrets from database...");
     const loadedSecrets = await getSecrets();
-    console.log("Loaded secrets:", loadedSecrets);
-    // loop loaded secrets and print key
-    loadedSecrets.forEach(secret => {
-      console.log("Secret name:", secret.name);
-      console.log("Secret key:", secret.key);
-    });
-
-    // Add mock data for shared status
     secrets.value = loadedSecrets.map(secret => ({
       ...secret,
       shared_with: Math.random() > 0.7 ? [1, 2] : [],
       is_shared: Math.random() > 0.7
     }));
-    
-    console.log("Secrets processed and set to reactive state");
   } catch (error) {
     console.error('Failed to load secrets:', error);
     // Don't show alert on initial load, just log the error
@@ -156,7 +132,6 @@ const loadUsers = async () => {
     users.value = await getUsers();
   } catch (error) {
     console.error('Failed to load users:', error);
-    // Don't show alert, just log and continue
     users.value = [];
   }
 };
@@ -199,8 +174,51 @@ const shareSecret = async () => {
   if (selectedSecretForShare.value && selectedUserForShare.value) {
     console.log("Selected secret:", selectedSecretForShare.value);
     console.log("Selected user:", selectedUserForShare.value);
+
+    // Check if master password is cached in backend
+    const cacheValid = await invoke<boolean>('is_cache_valid');
+    if (cacheValid) {
+      try {
+        // Use cached password by passing null
+        const decryptedSecret = await invoke('decrypt_message', {
+          encryptedText: selectedSecretForShare.value.key.trim(),
+          passphrase: null
+        }) as string;
+
+        // Find the selected user's public key
+        const user = users.value.find(u => u.id === selectedUserForShare.value);
+        if (!user) {
+          encryptError.value = 'User not found';
+          return;
+        }
+
+        // Encrypt with user's public key
+        console.log("Encrypting secret for user:", user.name);
+        console.log("Decrypted secret:", decryptedSecret);
+        console.log("User's public key:", user.public_key);
+
+        const encrypted = await invoke('encrypt_message', {
+          plainText: decryptedSecret,
+          publicKey: user.public_key
+        }) as string;
+
+        encryptedMessage.value = encrypted;
+        shareDialog.value = false;
+        encryptedMessageDialog.value = true;
+        passwordPromptDialog.value = false;
+        masterPassword.value = '';
+        passwordErrorMessage.value = '';
+        return;
+      } catch (error) {
+        // If cached password fails, fallback to prompt
+        console.log("Cached password failed for sharing, fallback to prompt.");
+      }
+    }
+
+    // Show password prompt if no cached password or decryption failed
     passwordPromptDialog.value = true;
     encryptError.value = '';
+    masterPassword.value = '';
     return;
   }
 };
@@ -218,7 +236,7 @@ const proceedShareAfterUnlock = async () => {
     try {
       // Decrypt the secret using the master password
       const decryptedSecret = await invoke('decrypt_message', {
-        encryptedText: selectedSecretForShare.value.key.trim(), // <-- trim whitespace
+        encryptedText: selectedSecretForShare.value.key.trim(),
         passphrase: masterPassword.value
       }) as string;
 
@@ -227,15 +245,14 @@ const proceedShareAfterUnlock = async () => {
       if (!user) {
         encryptError.value = 'User not found';
         isEncrypting.value = false;
+        // Only close password dialog if it was open
         passwordPromptDialog.value = false;
+        masterPassword.value = '';
+        passwordErrorMessage.value = '';
         return;
       }
 
       // Encrypt with user's public key
-      console.log("Encrypting secret for user:", user.name);
-      console.log("Decrypted secret:", decryptedSecret);
-      console.log("User's public key:", user.public_key);
-
       const encrypted = await invoke('encrypt_message', {
         plainText: decryptedSecret,
         publicKey: user.public_key
@@ -248,10 +265,13 @@ const proceedShareAfterUnlock = async () => {
       masterPassword.value = '';
       passwordErrorMessage.value = '';
     } catch (error) {
-      encryptError.value = 'Failed to decrypt/encrypt secret for sharing: ' + (error instanceof Error ? error.message : String(error));
-      passwordPromptDialog.value = false;
+      // Show error in password dialog and keep it open
+      passwordErrorMessage.value = 'Invalid master password. Please try again.';
+      // Do NOT close passwordPromptDialog here
       masterPassword.value = '';
-      passwordErrorMessage.value = '';
+      // Optionally, clear encryptError so it doesn't show in the share dialog
+      encryptError.value = '';
+      return;
     } finally {
       isEncrypting.value = false;
     }
@@ -266,7 +286,25 @@ const closeEncryptedMessageDialog = () => {
 
 const toggleSecretVisibility = async () => {
   if (!showSecretKey.value) {
-    // Show password prompt before revealing the secret
+    // Check if master password is cached in backend
+    const cacheValid = await invoke<boolean>('is_cache_valid');
+    if (cacheValid) {
+      if (selectedSecretDetails.value) {
+        try {
+          // Use cached password by passing null
+          const decryptedSecret = await invoke('decrypt_message', {
+            encryptedText: selectedSecretDetails.value.key.trim(),
+            passphrase: null
+          }) as string;
+          editableSecret.value.key = decryptedSecret;
+          showSecretKey.value = true;
+          return;
+        } catch (error) {
+          // If cached password fails, fallback to prompt
+        }
+      }
+    }
+    // Show password prompt if no cached password or decryption failed
     passwordPromptDialog.value = true;
     masterPassword.value = '';
   } else {
@@ -284,7 +322,6 @@ const validateMasterPassword = async () => {
     isValidatingPassword.value = true;
     passwordErrorMessage.value = '';
 
-    // Directly try to decrypt with the entered password
     if (selectedSecretDetails.value) {
       try {
         const decryptedSecret = await invoke('decrypt_message', {
@@ -295,27 +332,14 @@ const validateMasterPassword = async () => {
         editableSecret.value.key = decryptedSecret;
         showSecretKey.value = true;
         passwordPromptDialog.value = false;
-        masterPassword.value = '';
         passwordErrorMessage.value = '';
+        // No need to cache the password here, Rust will handle it
+        masterPassword.value = '';
       } catch (decryptError) {
-        // Treat any error as invalid password or corrupted secret
-        console.error('Decryption failed:', decryptError);
-        try {
-          await invoke('log_error', { message: `Decryption failed: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}` });
-        } catch (backendLogError) {
-          console.error('Failed to log error in backend:', backendLogError);
-        }
         passwordErrorMessage.value = 'Invalid master password. Please try again.';
       }
     }
   } catch (error) {
-    // Treat any error as invalid password
-    console.error('Failed to validate password:', error);
-    try {
-      await invoke('log_error', { message: `Password validation error: ${error instanceof Error ? error.message : String(error)}` });
-    } catch (backendLogError) {
-      console.error('Failed to log error in backend:', backendLogError);
-    }
     passwordErrorMessage.value = 'Invalid master password or corrupted secret. Please try again.';
   } finally {
     isValidatingPassword.value = false;
@@ -380,17 +404,10 @@ const cancelEditingSecret = () => {
 const saveSecretChanges = async () => {
   if (selectedSecretDetails.value && editableSecret.value.name && editableSecret.value.key) {
     try {
-      console.log("Attempting to encrypt and update secret:", selectedSecretDetails.value.id);
-      
-      // Encrypt the secret value before updating in database
       const encryptedKey = await invoke('encrypt_message', {
         plainText: editableSecret.value.key
       });
-      
-      console.log("Secret encrypted successfully for update");
-      
       await updateSecret(selectedSecretDetails.value.id, editableSecret.value.name, encryptedKey as string);
-      console.log("Secret updated successfully");
       await loadSecrets();
       isEditingSecret.value = false;
       closeSecretDetails();
@@ -441,12 +458,9 @@ const masterPasswordRules = [
 
 onMounted(async () => {
   try {
-    console.log("Component mounted, initializing...");
     await initDatabase();
-    console.log("Database initialized successfully");
     await loadSecrets();
     await loadUsers();
-    console.log("Initial data loading completed");
   } catch (error) {
     console.error("Failed to initialize app:", error);
     // Show error but don't block the app
@@ -638,7 +652,7 @@ const copyEncryptedMessage = async () => {
               <v-text-field
                 v-model="newSecret.key"
                 label="Secret Value"
-                type="password"
+                type="text"
                 :rules="[v => !!v || 'Secret Value is required']"
                 required
                 variant="outlined"
