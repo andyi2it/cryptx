@@ -60,7 +60,7 @@ fn join_path(base: String, segment: String) -> String {
 mod password_cache {
     use super::*;
     static CACHE: Lazy<Mutex<Option<(String, SystemTime)>>> = Lazy::new(|| Mutex::new(None));
-    const CACHE_DURATION: Duration = Duration::from_secs(1 * 60); // Changed from 15 to 2 minutes
+    const CACHE_DURATION: Duration = Duration::from_secs(15 * 60); // Changed from 15 to 2 minutes
 
     pub fn set(password: String) {
         let mut cache = CACHE.lock().unwrap();
